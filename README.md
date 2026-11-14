@@ -95,8 +95,16 @@ void main() {
 The API is Echo shaped, not a port, and one difference decides whether a handler runs: `listen` compares the name you pass with the event name in the frame, exactly. Echo JS prepends the event's namespace for you; this driver does not. A Laravel event without `broadcastAs()` goes out under its full class name (`App\Events\OrderShipped`), so a handler registered for `'OrderShipped'` never runs. Name the event on the server, or pass the full class name to `listen`:
 
 ```php
+use Illuminate\Broadcasting\Channel;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+
 class OrderShipped implements ShouldBroadcast
 {
+    public function broadcastOn(): Channel
+    {
+        return new Channel('orders');
+    }
+
     public function broadcastAs(): string
     {
         return 'OrderShipped';

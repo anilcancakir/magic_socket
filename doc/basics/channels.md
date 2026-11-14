@@ -53,8 +53,16 @@ void main() {
 Name the event on the server and pass the same string to `listen`:
 
 ```php
+use Illuminate\Broadcasting\Channel;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+
 class OrderShipped implements ShouldBroadcast
 {
+    public function broadcastOn(): Channel
+    {
+        return new Channel('orders');
+    }
+
     public function broadcastAs(): string
     {
         return 'OrderShipped';

@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - The documentation now says that `listen` compares its event name with the frame's event name exactly and resolves no namespace, unlike Echo JS. A Laravel event without `broadcastAs()` arrives as its full class name, so the samples now assume a `broadcastAs()` and the README and the Channels page show it and list the difference from Laravel Echo.
-- The documentation no longer claims that `Echo.fake` survives `Magic.flush()`: the fake lives in the container and the flush drops it; only the `BroadcastListeners` registry and custom drivers are statics to reset.
+- The documentation no longer claims that `Echo.fake` survives `Magic.flush()`: the fake lives in the container and the flush drops it; only the `BroadcastListeners` registry, the custom drivers and a `MagicPerfHooks.sink` a test sets are statics to reset.
 - The custom driver guide counts three obligations of the driver contract, not two.
 
 ## [1.0.1] - 2026-11-15
