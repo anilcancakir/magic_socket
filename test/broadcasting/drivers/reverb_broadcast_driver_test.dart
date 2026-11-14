@@ -82,6 +82,11 @@ class _MockWebSocketChannel implements WebSocketChannel {
     _incomingController.add(jsonEncode(payload));
   }
 
+  /// Simulates a frame arriving exactly as [raw], undecoded.
+  void simulateRawMessage(Object raw) {
+    _incomingController.add(raw);
+  }
+
   /// Simulates the server closing the connection, with the WebSocket close
   /// [code] it sent, or none when the TCP connection simply went away.
   void simulateClose([int? code]) {
@@ -134,6 +139,18 @@ class _HangingWebSocketChannel extends _MockWebSocketChannel {
 
   @override
   WebSocketSink get sink => _deadSink;
+}
+
+/// A socket whose stream is single-subscription, as a real one is: what
+/// arrives before the driver listens is buffered, not dropped.
+class _BufferingWebSocketChannel extends _MockWebSocketChannel {
+  final StreamController<dynamic> _buffered = StreamController<dynamic>();
+
+  @override
+  Stream<dynamic> get stream => _buffered.stream;
+
+  @override
+  void simulateError(Object error) => _buffered.addError(error);
 }
 
 // ---------------------------------------------------------------------------
@@ -1100,6 +1117,54 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       expect(interceptor.errors, isNotEmpty);
+
+      await driver.disconnect();
+    });
+
+    test('a socket error reaches onError once and its recovery event is '
+        'delivered once', () async {
+      final (driver, mock) = await _createConnectedDriver(
+        configOverrides: {'reconnect': false},
+      );
+      final received = <BroadcastEvent>[];
+      driver.channel('orders').listen('OrdersStale', received.add);
+      var calls = 0;
+      driver.addInterceptor(
+        _ReplacingInterceptor((_) {
+          calls++;
+          return BroadcastEvent(
+            event: 'OrdersStale',
+            channel: 'orders',
+            data: const <String, dynamic>{},
+            receivedAt: DateTime.now(),
+          );
+        }),
+      );
+
+      mock.simulateError(Exception('connection reset'));
+      await _pump();
+
+      expect(calls, 1);
+      expect(received, hasLength(1));
+
+      await driver.disconnect();
+    });
+
+    test('a socket error buffered before the driver listens reaches onError '
+        'once and fails the connect', () async {
+      final socket = _BufferingWebSocketChannel();
+      final driver = ReverbBroadcastDriver(
+        _defaultConfig(overrides: {'reconnect': false}),
+        channelFactory: (_) => socket,
+      );
+      final interceptor = _TestInterceptor();
+      driver.addInterceptor(interceptor);
+      socket.simulateError(Exception('refused mid-upgrade'));
+
+      await expectLater(driver.connect(), throwsA(isA<Exception>()));
+      await _pump();
+
+      expect(interceptor.errors, hasLength(1));
 
       await driver.disconnect();
     });
@@ -2644,4 +2709,455 @@ void main() {
       await driver.disconnect();
     });
   });
+
+  group('ReverbBroadcastDriver: leave by the unprefixed name', () {
+    test('leave() with the name given to private() unsubscribes the private '
+        'channel and stops its listener', () async {
+      final (driver, sockets) = _createCountingDriver(
+        authFactory: _signingAuth,
+      );
+      await driver.connect();
+
+      final received = <BroadcastEvent>[];
+      final chat = driver.private('chat.1')..listen('Sent', received.add);
+      await _pump();
+
+      driver.leave('chat.1');
+      await _pump();
+
+      expect(_unsubscribedOn(sockets.first), contains('private-chat.1'));
+      sockets.first.simulateMessage({
+        'event': 'Sent',
+        'channel': 'private-chat.1',
+        'data': '{}',
+      });
+      await _pump();
+      expect(received, isEmpty);
+      expect(driver.private('chat.1'), isNot(same(chat)));
+
+      await driver.disconnect();
+    });
+
+    test('leave() with the name given to join() unsubscribes the presence '
+        'channel', () async {
+      final (driver, sockets) = _createCountingDriver(
+        authFactory: _signingAuth,
+      );
+      await driver.connect();
+
+      final room = driver.join('room.1');
+      await _pump();
+
+      driver.leave('room.1');
+      await _pump();
+
+      expect(_unsubscribedOn(sockets.first), contains('presence-room.1'));
+      expect(driver.join('room.1'), isNot(same(room)));
+
+      await driver.disconnect();
+    });
+
+    test('leave() drops the public, private and presence channels of one '
+        'name, as Laravel Echo does', () async {
+      final (driver, sockets) = _createCountingDriver(
+        authFactory: _signingAuth,
+      );
+      await driver.connect();
+
+      driver
+        ..channel('chat.1')
+        ..private('chat.1')
+        ..join('chat.1');
+      await _pump();
+
+      driver.leave('chat.1');
+      await _pump();
+
+      expect(
+        _unsubscribedOn(sockets.first),
+        unorderedEquals(<String>[
+          'chat.1',
+          'private-chat.1',
+          'presence-chat.1',
+        ]),
+      );
+
+      await driver.disconnect();
+    });
+
+    test('leave() with the prefixed name still leaves the channel', () async {
+      final (driver, sockets) = _createCountingDriver(
+        authFactory: _signingAuth,
+      );
+      await driver.connect();
+
+      final chat = driver.private('chat.1');
+      await _pump();
+
+      driver.leave('private-chat.1');
+      await _pump();
+
+      expect(_unsubscribedOn(sockets.first), ['private-chat.1']);
+      expect(driver.private('chat.1'), isNot(same(chat)));
+
+      await driver.disconnect();
+    });
+
+    test('leave() of a name never subscribed sends nothing', () async {
+      final (driver, sockets) = _createCountingDriver();
+      await driver.connect();
+
+      driver.leave('chat.1');
+      await _pump();
+
+      expect(_unsubscribedOn(sockets.first), isEmpty);
+
+      await driver.disconnect();
+    });
+  });
+
+  group('ReverbBroadcastDriver: interceptor results', () {
+    test(
+      'an empty onSend result suppresses the frame and ends the chain',
+      () async {
+        final (driver, mock) = await _createConnectedDriver();
+        final suppressing = _SuppressingInterceptor();
+        final after = _TestInterceptor();
+        driver
+          ..addInterceptor(suppressing)
+          ..addInterceptor(after);
+        mock._sink.messages.clear();
+
+        driver.channel('orders');
+        await _pump();
+
+        expect(suppressing.suppressed, hasLength(1));
+        expect(mock._sink.messages, isEmpty);
+        expect(after.sentMessages, isEmpty);
+
+        await driver.disconnect();
+      },
+    );
+
+    test('a non-empty onSend result is the frame that is sent', () async {
+      final (driver, mock) = await _createConnectedDriver();
+      driver.addInterceptor(_TaggingInterceptor());
+      mock._sink.messages.clear();
+
+      driver.channel('orders');
+      await _pump();
+
+      expect(mock.sentFrames, hasLength(1));
+      expect(mock.sentFrames.single['event'], 'pusher:subscribe');
+      expect(mock.sentFrames.single['tag'], 'tagged');
+
+      await driver.disconnect();
+    });
+
+    test('the next interceptor receives the replacement an onError '
+        'returned, not the original error', () async {
+      final (driver, mock) = await _createConnectedDriver();
+      final replacement = StateError('replacement');
+      final after = _TestInterceptor();
+      driver
+        ..addInterceptor(_ReplacingInterceptor((_) => replacement))
+        ..addInterceptor(after);
+
+      mock.simulateMessage({'event': 'pusher:error', 'data': '{}'});
+      await _pump();
+
+      expect(after.errors, hasLength(1));
+      expect(after.errors.single, same(replacement));
+
+      await driver.disconnect();
+    });
+
+    test('a BroadcastEvent returned by onError is delivered to the '
+        "listeners of that event's channel", () async {
+      final (driver, mock) = await _createConnectedDriver();
+      final received = <BroadcastEvent>[];
+      driver.channel('orders').listen('OrdersStale', received.add);
+      driver.addInterceptor(
+        _ReplacingInterceptor(
+          (_) => BroadcastEvent(
+            event: 'OrdersStale',
+            channel: 'orders',
+            data: const <String, dynamic>{'reason': 'error'},
+            receivedAt: DateTime.now(),
+          ),
+        ),
+      );
+
+      mock.simulateMessage({'event': 'pusher:error', 'data': '{}'});
+      await _pump();
+
+      expect(received, hasLength(1));
+      expect(received.single.data['reason'], 'error');
+      expect(driver.isConnected, isTrue);
+
+      await driver.disconnect();
+    });
+  });
+
+  group('ReverbBroadcastDriver: malformed frames', () {
+    test('a frame that is not JSON reaches the interceptors and the next '
+        'valid frame is still delivered', () async {
+      final (driver, mock) = await _createConnectedDriver();
+      final interceptor = _TestInterceptor();
+      driver.addInterceptor(interceptor);
+      final received = <BroadcastEvent>[];
+      driver.channel('orders').listen('OrderShipped', received.add);
+
+      mock.simulateRawMessage('not json at all');
+      await _pump();
+      mock.simulateMessage({
+        'event': 'OrderShipped',
+        'channel': 'orders',
+        'data': '{}',
+      });
+      await _pump();
+
+      expect(interceptor.errors.whereType<FormatException>(), hasLength(1));
+      expect(received, hasLength(1));
+      expect(driver.isConnected, isTrue);
+
+      await driver.disconnect();
+    });
+
+    test('a JSON frame that is not an object reaches the interceptors and '
+        'the next valid frame is still delivered', () async {
+      final (driver, mock) = await _createConnectedDriver();
+      final interceptor = _TestInterceptor();
+      driver.addInterceptor(interceptor);
+      final received = <BroadcastEvent>[];
+      driver.channel('orders').listen('OrderShipped', received.add);
+
+      mock.simulateRawMessage('[1, 2]');
+      await _pump();
+      mock.simulateMessage({
+        'event': 'OrderShipped',
+        'channel': 'orders',
+        'data': '{}',
+      });
+      await _pump();
+
+      expect(interceptor.errors.whereType<TypeError>(), hasLength(1));
+      expect(received, hasLength(1));
+
+      await driver.disconnect();
+    });
+
+    test('a handshake without a socket_id reaches the interceptors, keeps '
+        'the socket id, and the next valid frame is still delivered', () async {
+      final (driver, mock) = await _createConnectedDriver();
+      final interceptor = _TestInterceptor();
+      driver.addInterceptor(interceptor);
+      final received = <BroadcastEvent>[];
+      driver.channel('orders').listen('OrderShipped', received.add);
+
+      mock.simulateMessage({
+        'event': 'pusher:connection_established',
+        'data': jsonEncode(<String, dynamic>{'activity_timeout': 30}),
+      });
+      await _pump();
+      mock.simulateMessage({
+        'event': 'OrderShipped',
+        'channel': 'orders',
+        'data': '{}',
+      });
+      await _pump();
+
+      expect(interceptor.errors.whereType<TypeError>(), hasLength(1));
+      expect(driver.socketId, 'test-socket-id');
+      expect(received, hasLength(1));
+
+      await driver.disconnect();
+    });
+
+    test('a handshake whose socket_id is not a string leaves the state '
+        'untouched and the next handshake connects', () async {
+      final mock = _MockWebSocketChannel();
+      final driver = ReverbBroadcastDriver(
+        _defaultConfig(),
+        channelFactory: (_) => mock,
+      );
+      final interceptor = _TestInterceptor();
+      driver.addInterceptor(interceptor);
+
+      final connecting = driver.connect();
+      await _pump();
+      mock.simulateMessage({
+        'event': 'pusher:connection_established',
+        'data': jsonEncode(<String, dynamic>{
+          'socket_id': 42,
+          'activity_timeout': 30,
+        }),
+      });
+      await _pump();
+
+      expect(interceptor.errors.whereType<TypeError>(), hasLength(1));
+      expect(driver.isConnected, isFalse);
+      expect(driver.socketId, isNull);
+
+      _simulateConnectionEstablished(mock, socketId: 'valid-socket-id');
+      await connecting;
+
+      expect(driver.isConnected, isTrue);
+      expect(driver.socketId, 'valid-socket-id');
+
+      await driver.disconnect();
+    });
+
+    test('a handshake whose activity_timeout is not an int stores no state, '
+        'not even the socket_id read before it', () async {
+      final (driver, mock) = await _createConnectedDriver();
+
+      mock.simulateMessage({
+        'event': 'pusher:connection_established',
+        'data': jsonEncode(<String, dynamic>{
+          'socket_id': 'other-socket-id',
+          'activity_timeout': '45',
+        }),
+      });
+      await _pump();
+
+      expect(driver.socketId, 'test-socket-id');
+      expect(driver.activityTimeout, 30);
+
+      await driver.disconnect();
+    });
+
+    test('a malformed handshake with no interceptor is logged as a '
+        'warning, not dropped silently', () async {
+      final fakeLog = Log.fake();
+      final (driver, mock) = await _createConnectedDriver();
+
+      mock.simulateMessage({
+        'event': 'pusher:connection_established',
+        'data': jsonEncode(<String, dynamic>{'activity_timeout': 30}),
+      });
+      await _pump();
+
+      final warnings = fakeLog.entries.where(
+        (e) => e.level == 'warning' && e.message.contains('malformed frame'),
+      );
+      expect(warnings, hasLength(1));
+
+      await driver.disconnect();
+    });
+
+    test('a TypeError thrown by an interceptor onReceive escapes to the '
+        'zone, not into the malformed frame path', () async {
+      final fakeLog = Log.fake();
+      final uncaught = <Object>[];
+      final recorder = _TestInterceptor();
+      late ReverbBroadcastDriver driver;
+      late _MockWebSocketChannel mock;
+      // The socket listener runs in the zone connect() was called from, so
+      // an error the driver does not catch lands in this handler.
+      await runZonedGuarded(() async {
+        (driver, mock) = await _createConnectedDriver();
+      }, (error, _) => uncaught.add(error));
+      driver
+        ..addInterceptor(recorder)
+        ..addInterceptor(_CastingReceiveInterceptor())
+        ..channel('orders');
+
+      mock.simulateMessage({
+        'event': 'OrderShipped',
+        'channel': 'orders',
+        'data': '{"id":"not-an-int"}',
+      });
+      await _pump();
+
+      expect(uncaught.whereType<TypeError>(), hasLength(1));
+      expect(recorder.receivedEvents, hasLength(1));
+      expect(recorder.errors, isEmpty);
+      expect(
+        fakeLog.entries.where((e) => e.message.contains('malformed frame')),
+        isEmpty,
+      );
+
+      await driver.disconnect();
+    });
+
+    test('an onError that throws while a pusher:error frame is routed is '
+        'called once and its error escapes', () async {
+      final uncaught = <Object>[];
+      final throwing = _ThrowingErrorInterceptor();
+      late ReverbBroadcastDriver driver;
+      late _MockWebSocketChannel mock;
+      await runZonedGuarded(() async {
+        (driver, mock) = await _createConnectedDriver();
+      }, (error, _) => uncaught.add(error));
+      driver.addInterceptor(throwing);
+
+      mock.simulateMessage({'event': 'pusher:error', 'data': '{}'});
+      await _pump();
+
+      expect(throwing.calls, 1);
+      expect(uncaught, hasLength(1));
+      expect(uncaught.single, same(throwing.thrown));
+
+      await driver.disconnect();
+    });
+  });
+}
+
+/// Reads an int id off every received event, as app code might, and so
+/// throws a [TypeError] for an event whose id is not one.
+class _CastingReceiveInterceptor extends BroadcastInterceptor {
+  @override
+  BroadcastEvent onReceive(BroadcastEvent event) {
+    if ((event.data['id'] as int) < 0) {
+      throw ArgumentError.value(event.data['id'], 'id');
+    }
+    return event;
+  }
+}
+
+/// Throws [thrown] from every `onError`, counting the calls.
+class _ThrowingErrorInterceptor extends BroadcastInterceptor {
+  final StateError thrown = StateError('interceptor failed');
+  int calls = 0;
+
+  @override
+  dynamic onError(dynamic error) {
+    calls++;
+    throw thrown;
+  }
+}
+
+/// The channel names [socket] sent a `pusher:unsubscribe` for, in order.
+List<String> _unsubscribedOn(_MockWebSocketChannel socket) => socket.sentFrames
+    .where((f) => f['event'] == 'pusher:unsubscribe')
+    .map((f) => (f['data'] as Map<String, dynamic>)['channel'] as String)
+    .toList();
+
+/// Suppresses every outbound frame by answering an empty map.
+class _SuppressingInterceptor extends BroadcastInterceptor {
+  final List<Map<String, dynamic>> suppressed = [];
+
+  @override
+  Map<String, dynamic> onSend(Map<String, dynamic> message) {
+    suppressed.add(message);
+    return <String, dynamic>{};
+  }
+}
+
+/// Adds a `tag` key to every outbound frame.
+class _TaggingInterceptor extends BroadcastInterceptor {
+  @override
+  Map<String, dynamic> onSend(Map<String, dynamic> message) =>
+      <String, dynamic>{...message, 'tag': 'tagged'};
+}
+
+/// Answers every error with whatever [replace] returns for it.
+class _ReplacingInterceptor extends BroadcastInterceptor {
+  _ReplacingInterceptor(this.replace);
+
+  final Object Function(dynamic error) replace;
+
+  @override
+  dynamic onError(dynamic error) => replace(error);
 }

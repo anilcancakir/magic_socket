@@ -64,6 +64,18 @@ void main() {
       expect(() => driver.leave('orders'), returnsNormally);
     });
 
+    test('leave() by the unprefixed or the prefixed name of a private or '
+        'presence channel does not throw', () {
+      driver
+        ..private('chat.1')
+        ..join('room.1');
+
+      expect(() => driver.leave('chat.1'), returnsNormally);
+      expect(() => driver.leave('private-chat.1'), returnsNormally);
+      expect(() => driver.leave('room.1'), returnsNormally);
+      expect(() => driver.leave('presence-room.1'), returnsNormally);
+    });
+
     test('addInterceptor() does not throw', () {
       final interceptor = _NoOpInterceptor();
       expect(() => driver.addInterceptor(interceptor), returnsNormally);

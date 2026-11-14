@@ -53,7 +53,10 @@ abstract class BroadcastDriver {
   /// Returns a private [BroadcastChannel] for [name].
   ///
   /// The driver will prefix the name (e.g. `'private-'`) as required by the
-  /// server and perform the appropriate auth handshake.
+  /// server and perform the appropriate auth handshake. Like [channel], a
+  /// repeated call for a registered [name] must return the held instance
+  /// until a [leave] or a disconnect: `AuthChannelSubscription` calls this on
+  /// every sync and takes a different instance to mean the channel was left.
   BroadcastChannel private(String name);
 
   /// Joins a presence channel for [name] and returns it.
@@ -62,7 +65,10 @@ abstract class BroadcastDriver {
   /// presence auth handshake to obtain membership data.
   BroadcastPresenceChannel join(String name);
 
-  /// Unsubscribes from the channel identified by [name].
+  /// Unsubscribes from the channel identified by [name], and from its
+  /// `private-` and `presence-` forms, as Laravel Echo's `leave` does: the
+  /// name given to [private] or [join] leaves that channel, and a prefixed
+  /// [name] still leaves it too.
   ///
   /// Has no effect if the channel was not previously subscribed.
   void leave(String name);

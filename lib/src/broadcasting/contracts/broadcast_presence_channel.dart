@@ -8,9 +8,9 @@ import 'broadcast_channel.dart';
 /// notifications.
 ///
 /// ```dart
-/// final channel = Echo.join('presence-room.1');
-/// channel.onJoin.listen((member) => print('${member['name']} joined'));
-/// channel.onLeave.listen((member) => print('${member['name']} left'));
+/// final channel = Echo.join('room.1');
+/// channel.onJoin.listen((member) => print('${member['user_id']} joined'));
+/// channel.onLeave.listen((member) => print('${member['user_id']} left'));
 /// ```
 abstract class BroadcastPresenceChannel extends BroadcastChannel {
   /// The current list of members connected to this presence channel.

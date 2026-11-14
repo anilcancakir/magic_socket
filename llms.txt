@@ -27,7 +27,7 @@ void main() {
 
 ## API
 
-- `Echo` (facade, all static): `channel(name)` and `private(name)` return `BroadcastChannel`; `join(name)` returns `BroadcastPresenceChannel`; `listen(channel, event, callback)` is a public-channel shorthand; `leave(name)`; `connect()`, `disconnect()`; `socketId`, `connectionState`, `onReconnect`, `connection`, `manager`; `addInterceptor(interceptor)`; `fake()` and `unfake()`.
+- `Echo` (facade, all static): `channel(name)` and `private(name)` return `BroadcastChannel`; `join(name)` returns `BroadcastPresenceChannel`; `listen(channel, event, callback)` is a public-channel shorthand; `leave(name)` (also leaves the `private-` and `presence-` forms of `name`); `connect()`, `disconnect()`; `socketId`, `connectionState`, `onReconnect`, `connection`, `manager`; `addInterceptor(interceptor)`; `fake()` and `unfake()`.
 - `BroadcastChannel`: `name`, `events`, `isSubscribed`, `onSubscriptionChanged`, `listen(event, callback)` (chainable; a second call for one event replaces the first), `stopListening(event)`. `BroadcastPresenceChannel` adds `members`, `onJoin`, `onLeave`.
 - `BroadcastEvent`: `event`, `channel`, `data` (decoded map), `receivedAt`. `BroadcastConnectionState`: `connecting`, `connected`, `disconnected`, `reconnecting`.
 - Drivers: `ReverbBroadcastDriver` (reconnect with backoff and jitter, activity ping, resubscribe on every handshake, `BroadcastAuthException` on a refused auth) and `NullBroadcastDriver`. `BroadcastManager.extend(name, factory)` registers a custom `BroadcastDriver`; `BroadcastInterceptor` hooks `onSend`, `onReceive`, `onError`.

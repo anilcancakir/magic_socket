@@ -17,7 +17,7 @@ A `BroadcastInterceptor` sits in the driver pipeline, the same idea as `MagicNet
 |:-----|:---------|:--------|:--------|
 | `onSend(message)` | `Map<String, dynamic>` | `Map<String, dynamic>` | Before an outbound frame; return an empty map to suppress it. |
 | `onReceive(event)` | `BroadcastEvent` | `BroadcastEvent` | On an inbound event; return a modified event to pass it on. |
-| `onError(error)` | `dynamic` | `dynamic` | On a driver error; return a replacement to recover. |
+| `onError(error)` | `dynamic` | `dynamic` | On a driver error, including a malformed frame; the next interceptor gets what this one returns. A `BroadcastEvent` returned by the last one is delivered to the listeners of the channel it names, without `onReceive`. |
 
 ```dart
 import 'package:magic/magic.dart';
@@ -70,6 +70,16 @@ class LoggingBroadcastInterceptor extends BroadcastInterceptor {}
 ## Custom Drivers
 
 Implement `BroadcastDriver` to talk to another transport. The contract has `connect`, `disconnect`, `socketId`, `isConnected`, `connectionState`, `onReconnect`, `channel`, `private`, `join`, `leave` and `addInterceptor`. A channel implements `BroadcastChannel` (`name`, `events`, `isSubscribed`, `onSubscriptionChanged`, `listen`, `stopListening`), and a presence channel adds `members`, `onJoin` and `onLeave`.
+
+Two parts of the contract are obligations, since `AuthChannelSubscription` and `BroadcastListeners` rely on them:
+
+| Obligation | Why |
+|:-----------|:----|
+| `leave(name)` drops `name` and its `private-` and `presence-` forms. | `Echo.leave('chat.1')` must leave the channel `Echo.private('chat.1')` or `Echo.join('chat.1')` opened, as Laravel Echo does. |
+| `channel(name)`, `private(name)` and `join(name)` return the instance they already hold for a registered name, and a new one only after a leave or a disconnect. | A subscription calls `private(name)` on every `sync()` and compares identity with the channel it holds: the same instance means the channel is live, another means it was left or disconnected, so the subscription registers it again. |
+| A channel's `onSubscriptionChanged` ends when the driver disposes it (a leave or a disconnect). | Listeners attached to a disposed channel learn that it receives nothing any more. |
+
+`NullBroadcastDriver` subscribes nothing and mints a new channel on every call, so a subscription on it registers again on every `sync()`; that does nothing, because its channels are never confirmed. A driver built on it that sends a real subscribe from `private()` must override `private()` and `join()` to hold one channel per name, or it subscribes again on every `sync()` and a confirmed channel fires `onReconnect` each time.
 
 <a name="registering-a-driver"></a>
 ## Registering a Driver

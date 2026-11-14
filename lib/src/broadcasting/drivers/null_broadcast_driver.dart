@@ -14,9 +14,19 @@ import '../contracts/broadcast_presence_channel.dart';
 /// compile and run without a real server.
 ///
 /// ```dart
-/// Magic.init(
-///   providers: [BroadcastServiceProvider()],
-///   config: {'broadcasting': {'default': 'null'}},
+/// await Magic.init(
+///   configs: [
+///     {
+///       'app': {
+///         'providers': [
+///           (app) => BroadcastServiceProvider(app),
+///         ],
+///       },
+///       'broadcasting': {
+///         'default': 'null',
+///       },
+///     },
+///   ],
 /// );
 /// ```
 class NullBroadcastDriver implements BroadcastDriver {
@@ -95,7 +105,7 @@ class _NullBroadcastChannel implements BroadcastChannel {
   bool get isSubscribed => false;
 
   @override
-  /// Never emits: the subscription state never changes.
+  /// Never emits and ends at once: the subscription state never changes.
   Stream<bool> get onSubscriptionChanged => const Stream<bool>.empty();
 
   @override

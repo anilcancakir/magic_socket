@@ -64,7 +64,7 @@ Every feature, fix, or refactor goes through red-green-refactor: write a failing
 | Mistake | Fix |
 |---------|-----|
 | Treating `assertSubscribed` as proof a handler exists | Subscribing and listening are separate; assert with `assertListening`, prove it runs with `dispatch` |
-| Keeping fake handler registrations on the channel object | The driver mints a new channel per call; handlers live on the fake driver, keyed by channel and event |
+| Keeping fake handler registrations on the channel object | Handlers live on the fake driver, keyed by channel and event; a held name returns the same handle until a leave or disconnect detaches it |
 | Making `boot()` await the socket | A down server then fails every later provider; connect without awaiting and log the failure |
 | Treating `onReconnect` as a confirmed channel | It fires after the subscribe was sent; refetch on `onSubscriptionChanged` turning `true` |
 | Resubscribing only on timer retries | Every handshake resubscribes every channel with the new socket id, including an explicit `connect()` after a drop |

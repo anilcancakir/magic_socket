@@ -17,10 +17,11 @@ import '../broadcasting/contracts/broadcast_presence_channel.dart';
 /// ```dart
 /// final fake = Echo.fake();
 ///
+/// await Echo.connect();
 /// Echo.channel('orders');
 ///
-/// fake.assertSubscribed('orders');
 /// fake.assertConnected();
+/// fake.assertSubscribed('orders');
 /// ```
 class FakeBroadcastManager extends BroadcastManager {
   final FakeBroadcastDriver _driver = FakeBroadcastDriver();
@@ -180,8 +181,15 @@ class FakeBroadcastDriver implements BroadcastDriver {
   @override
   Future<void> connect() async => _connected = true;
 
+  /// Disconnects and forgets every channel, as the real driver does: each
+  /// handler is dropped, each channel leaves [subscribedChannels], a
+  /// confirmed channel reports `false` on its
+  /// [BroadcastChannel.onSubscriptionChanged], and that stream then ends.
   @override
-  Future<void> disconnect() async => _connected = false;
+  Future<void> disconnect() async {
+    _connected = false;
+    _forgetAll();
+  }
 
   @override
   String? get socketId => _connected ? 'fake-socket-id' : null;
@@ -192,31 +200,47 @@ class FakeBroadcastDriver implements BroadcastDriver {
   @override
   Stream<void> get onReconnect => const Stream.empty();
 
+  /// The handle held for each registered fully-qualified channel name, so a
+  /// second call for that name answers the same one, as the real driver
+  /// does. A leave or a disconnect removes it.
+  final Map<String, _FakeBroadcastChannel> _handles = {};
+
   @override
-  BroadcastChannel channel(String name) {
-    _subscribedChannels.add(name);
-    return _FakeBroadcastChannel(name, this);
-  }
+  BroadcastChannel channel(String name) =>
+      _handles[name] ?? _hold(_FakeBroadcastChannel(name, this));
 
   @override
   BroadcastChannel private(String name) {
-    _subscribedChannels.add('private-$name');
-    return _FakeBroadcastChannel('private-$name', this);
+    final String prefixed = 'private-$name';
+
+    return _handles[prefixed] ?? _hold(_FakeBroadcastChannel(prefixed, this));
   }
 
   @override
   BroadcastPresenceChannel join(String name) {
-    _subscribedChannels.add('presence-$name');
-    return _FakeBroadcastPresenceChannel('presence-$name', this);
+    final String prefixed = 'presence-$name';
+    final _FakeBroadcastChannel? held = _handles[prefixed];
+    if (held is _FakeBroadcastPresenceChannel) return held;
+
+    return _hold<_FakeBroadcastPresenceChannel>(
+      _FakeBroadcastPresenceChannel(prefixed, this),
+    );
+  }
+
+  /// Records the subscription of [channel] and holds it under its name.
+  T _hold<T extends _FakeBroadcastChannel>(T channel) {
+    _subscribedChannels.add(channel.name);
+    _handles[channel.name] = channel;
+
+    return channel;
   }
 
   /// Event handlers registered through [BroadcastChannel.listen], keyed by
   /// channel name and then by event name.
   ///
-  /// The driver owns this rather than the channel because the channel factories
-  /// above mint a NEW channel object on every call and keep no reference, so a
-  /// registration recorded on the channel would vanish the moment the caller let
-  /// go of it. That is what made a listener registration untestable.
+  /// The driver owns this rather than the channel, so [FakeBroadcastManager]
+  /// asserts and dispatches against one place, and a leave or a disconnect
+  /// forgets a channel's handlers in the same step that drops its handle.
   final Map<String, Map<String, void Function(BroadcastEvent)>> _listeners = {};
 
   /// Registered event names per channel, for low-level inspection.
@@ -245,8 +269,15 @@ class FakeBroadcastDriver implements BroadcastDriver {
   /// [_listeners]: the channel objects are minted per call.
   final Map<String, bool> _confirmed = {};
 
-  final StreamController<(String, bool)> _confirmationChanges =
-      StreamController<(String, bool)>.broadcast();
+  /// The [BroadcastChannel.onSubscriptionChanged] source per fully-qualified
+  /// channel name, shared by every channel object minted for that name until
+  /// a leave or a disconnect closes it, the way the real driver closes a
+  /// channel's stream when it disposes the channel.
+  final Map<String, StreamController<bool>> _confirmationStreams = {};
+
+  /// The open confirmation source for [channel], created on first use.
+  StreamController<bool> _confirmationsFor(String channel) =>
+      _confirmationStreams[channel] ??= StreamController<bool>.broadcast();
 
   /// Sets what [BroadcastChannel.isSubscribed] answers for [channel], the
   /// fully-qualified name (`private-orders`, not `orders`), and emits on its
@@ -258,30 +289,53 @@ class FakeBroadcastDriver implements BroadcastDriver {
     if ((_confirmed[channel] ?? false) == subscribed) return;
 
     _confirmed[channel] = subscribed;
-    _confirmationChanges.add((channel, subscribed));
+    _confirmationStreams[channel]?.add(subscribed);
   }
 
+  /// Leaves every channel recorded under [name]: the channel itself and its
+  /// `private-` and `presence-` forms, as the real driver does. Each one's
+  /// handlers are dropped, a confirmed one reports `false`, and its
+  /// subscription stream ends.
   @override
   void leave(String name) {
-    _subscribedChannels.remove(name);
-    setSubscribed(name, false);
+    for (final candidate in <String>[name, 'private-$name', 'presence-$name']) {
+      _forget(candidate);
+    }
   }
 
   @override
   void addInterceptor(BroadcastInterceptor interceptor) =>
       _addedInterceptors.add(interceptor);
 
+  /// Drops everything recorded for the fully-qualified [channel].
+  void _forget(String channel) {
+    _subscribedChannels.removeWhere((recorded) => recorded == channel);
+    _listeners.remove(channel);
+    // Report a confirmed channel as dropped before its stream ends, so a
+    // listener attached earlier does not keep a stale `true`.
+    setSubscribed(channel, false);
+    _confirmed.remove(channel);
+    _confirmationStreams.remove(channel)?.close();
+    _handles.remove(channel);
+  }
+
+  /// Forgets every channel the driver has recorded in any form.
+  void _forgetAll() {
+    final channels = <String>{
+      ..._subscribedChannels,
+      ..._listeners.keys,
+      ..._confirmed.keys,
+      ..._confirmationStreams.keys,
+    };
+    for (final channel in channels) {
+      _forget(channel);
+    }
+  }
+
   void _reset() {
     _connected = false;
-    _subscribedChannels.clear();
     _addedInterceptors.clear();
-    _listeners.clear();
-    // Report each confirmed channel as dropped, so a listener attached
-    // before the reset does not keep a stale `true`.
-    for (final channel in _confirmed.keys.toList()) {
-      setSubscribed(channel, false);
-    }
-    _confirmed.clear();
+    _forgetAll();
   }
 }
 
@@ -290,10 +344,22 @@ class FakeBroadcastDriver implements BroadcastDriver {
 // ---------------------------------------------------------------------------
 
 class _FakeBroadcastChannel implements BroadcastChannel {
-  _FakeBroadcastChannel(this._name, this._driver);
+  _FakeBroadcastChannel(this._name, this._driver)
+    : _confirmations = _driver._confirmationsFor(_name);
 
   final String _name;
   final FakeBroadcastDriver _driver;
+
+  /// The confirmation source open when this channel was minted. A leave or
+  /// a disconnect closes it, which ends [onSubscriptionChanged] for this
+  /// object even after the name is subscribed again.
+  final StreamController<bool> _confirmations;
+
+  /// Whether a leave or a disconnect disposed this handle. A disposed handle
+  /// is detached from the name: a channel subscribed again under it gets a
+  /// new handle, and this one neither reports that channel's state nor
+  /// touches its handlers, as a disposed Reverb channel does.
+  bool get _disposed => _confirmations.isClosed;
 
   @override
   String get name => _name;
@@ -302,12 +368,10 @@ class _FakeBroadcastChannel implements BroadcastChannel {
   Stream<BroadcastEvent> get events => const Stream.empty();
 
   @override
-  bool get isSubscribed => _driver._confirmed[_name] ?? false;
+  bool get isSubscribed => !_disposed && (_driver._confirmed[_name] ?? false);
 
   @override
-  Stream<bool> get onSubscriptionChanged => _driver._confirmationChanges.stream
-      .where((change) => change.$1 == _name)
-      .map((change) => change.$2);
+  Stream<bool> get onSubscriptionChanged => _confirmations.stream;
 
   @override
   BroadcastChannel listen(
@@ -319,13 +383,19 @@ class _FakeBroadcastChannel implements BroadcastChannel {
     // subscription line could be deleted from an application and its whole suite
     // stayed green: the one line every broadcast depends on was the one line
     // nothing covered.
-    _driver._register(_name, event, callback);
+    if (!_disposed) {
+      _driver._register(_name, event, callback);
+    }
 
     return this;
   }
 
   @override
-  void stopListening(String event) => _driver._unregister(_name, event);
+  void stopListening(String event) {
+    if (_disposed) return;
+
+    _driver._unregister(_name, event);
+  }
 }
 
 // ---------------------------------------------------------------------------

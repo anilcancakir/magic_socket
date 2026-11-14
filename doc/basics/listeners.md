@@ -137,9 +137,9 @@ void watchTeam(int? teamId) {
 | Behaviour | Detail |
 |:----------|:-------|
 | `sync()` | Serialised: a call during another defers and runs once more afterwards, so two subscriptions never coexist across an await. |
-| Name unchanged | The channel is not registered again; if the connection is down, `sync()` only calls `Echo.connect()`. |
+| Name unchanged | If the connection is down, `sync()` calls `Echo.connect()`. After a mere socket drop the driver still holds the channel and subscribes it on its next handshake, so it is not registered again. After an `Echo.disconnect()` made elsewhere the driver has forgotten it, so `sync()` registers it again with every entry of `listeners`. |
 | Name changed | Leaves the old channel, connects when needed, subscribes the new one and wires every entry of `listeners`. |
-| `onReconnect` | Fires each time the server confirms the channel again after a drop, not when the socket returns. Reverb does not replay, so refetch here. |
+| `onReconnect` | Fires each time the server confirms the channel again after a drop or a disconnect, not when the socket returns, and at once when a `sync()` finds the channel already confirmed again by another consumer. Reverb does not replay, so refetch here. |
 | `null` name | Leaves the channel and, with `disconnectOnTeardown: true` (the default), calls `Echo.disconnect()`, which drops every channel on the connection. |
 | `dispose()` | Cancels the reconnect listening only; the channel stays live until a later `sync()` resolves `null`. |
 
@@ -153,7 +153,7 @@ void watchTeam(int? teamId) {
 | An alias key without a colon, `'check.recorded'` | Write `'team:check.recorded'`; the first colon splits alias from event. |
 | `BroadcastListeners.add` before `channel` | It throws `StateError`; declare the alias first. |
 | Never calling `sync()` | No channel is subscribed; call it at startup and on every auth change. |
-| Two standalone `AuthChannelSubscription`s on one connection | One `null` name disconnects both; use `BroadcastListeners` or pass `disconnectOnTeardown: false`. |
+| Two standalone `AuthChannelSubscription`s on one connection | One `null` name disconnects both, and the other one receives nothing until its next `sync()` registers its channel again; use `BroadcastListeners` or pass `disconnectOnTeardown: false`. |
 | A controller only used through `.instance` | `onInit` never runs; call `startListening()` in its constructor. |
 | Leaving aliases declared between tests | `BroadcastListeners` is static state that `Magic.flush()` does not clear; call `BroadcastListeners.reset()` in `tearDown`. |
 

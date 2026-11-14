@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- `Echo.leave('chat.1')` now leaves the channel `Echo.private('chat.1')` or `Echo.join('chat.1')` opened, as Laravel Echo does; it used to keep the server subscription and its listeners alive. It drops all three forms of the name, so it also leaves a public `chat.1`. The prefixed name still works, and `Echo.fake` behaves the same.
+- An `AuthChannelSubscription` (and so `ListensToBroadcasts` and `BroadcastListeners`) receives events again after an `Echo.disconnect()` made elsewhere: its next `sync` registers the channel again and fires `onReconnect` once it is confirmed, or at once when another consumer already had it confirmed again.
+- `Echo.fake`'s `disconnect`, `leave` and `reset` now forget the handlers and recorded subscriptions of the channels they drop and end those channels' `onSubscriptionChanged` streams, as the real driver does. A test that calls `assertSubscribed`, `assertListening` or `dispatch` after `Echo.disconnect()` or `Echo.leave(x)` now fails, and a subscription registers its channel again after a disconnect, so it appears in `subscribedChannels` again. A repeated `channel`, `private` or `join` for a name the fake still holds now returns the same handle and records no second entry in `subscribedChannels`, as the real driver does.
+- A websocket error on the Reverb driver reaches each interceptor's `onError` once; it used to run twice for one error.
+- A `BroadcastInterceptor` whose `onSend` returns an empty map now suppresses the frame, and a `BroadcastEvent` returned from `onError` now reaches the listeners of its channel, as the contract promised.
+- A websocket frame that is not JSON, or a handshake with a missing or non-string field, no longer escapes as an uncaught error: it is logged as a warning, passed to the interceptors' `onError`, and the connection keeps delivering events. An error thrown by an interceptor's `onReceive`, `onSend` or `onError` still reaches the app's zone, and `onError` runs once per error.
+
 ## [1.0.0] - 2026-11-14
 
 ### Added

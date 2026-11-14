@@ -27,7 +27,7 @@ import '../testing/fake_broadcast_manager.dart';
 ///
 /// // Join a presence channel
 /// final presence = Echo.join('room.1');
-/// presence.onJoin.listen((member) => print('${member['name']} joined'));
+/// presence.onJoin.listen((member) => print('${member['user_id']} joined'));
 /// ```
 class Echo {
   Echo._();
@@ -68,7 +68,7 @@ class Echo {
   ///
   /// ```dart
   /// final ch = Echo.join('room.1');
-  /// ch.onJoin.listen((m) => print('${m['name']} joined'));
+  /// ch.onJoin.listen((m) => print('${m['user_id']} joined'));
   /// ```
   static BroadcastPresenceChannel join(String name) =>
       _manager.connection().join(name);
@@ -87,12 +87,14 @@ class Echo {
     void Function(BroadcastEvent) callback,
   ) => _manager.connection().channel(channelName).listen(event, callback);
 
-  /// Unsubscribes from the channel identified by [name].
+  /// Unsubscribes from the channel identified by [name], and from its
+  /// `private-` and `presence-` forms, as Laravel Echo does.
   ///
   /// Has no effect if the channel was not previously subscribed.
   ///
   /// ```dart
-  /// Echo.leave('orders');
+  /// Echo.private('chat.1');
+  /// Echo.leave('chat.1'); // leaves private-chat.1
   /// ```
   static void leave(String name) => _manager.connection().leave(name);
 

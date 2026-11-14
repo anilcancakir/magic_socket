@@ -82,7 +82,7 @@ void main() {
 | `Echo.private(name)` | `BroadcastChannel` | A private channel; the driver authorises it over `POST /broadcasting/auth`. |
 | `Echo.join(name)` | `BroadcastPresenceChannel` | A presence channel with `members`, `onJoin` and `onLeave`. |
 | `Echo.listen(channel, event, callback)` | `BroadcastChannel` | Shorthand for a public channel. |
-| `Echo.leave(name)` | `void` | Unsubscribes. |
+| `Echo.leave(name)` | `void` | Unsubscribes `name` and its `private-` and `presence-` forms, as Laravel Echo does, so `leave('chat.1')` also drops a public `chat.1`. |
 | `Echo.connect()`, `Echo.disconnect()` | `Future<void>` | Opens or closes the socket; `connect` is idempotent. |
 | `Echo.socketId` | `String?` | The server-assigned id, `null` while disconnected. |
 | `Echo.connectionState`, `Echo.onReconnect` | `Stream` | Lifecycle transitions and reconnect handshakes. |
