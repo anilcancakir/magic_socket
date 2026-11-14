@@ -4,7 +4,7 @@
 
 Real-time broadcasting for the Magic Framework: the `Echo` facade, `BroadcastManager`, the Reverb (Pusher protocol websocket) and null drivers, private and presence channels, `BroadcastServiceProvider` with the `broadcastingConfig` factory, `SocketIdInterceptor`, the `ListensToBroadcasts` mixin over `BroadcastListeners` and `AuthChannelSubscription`, and the `Echo.fake` test double.
 
-**Version:** 1.0.0 · **Dart:** >=3.13.0 · **Flutter:** >=3.47.0 · **Requires:** `magic` ^1.0.0
+**Version:** 1.0.1 · **Dart:** >=3.13.0 · **Flutter:** >=3.47.0 · **Requires:** `magic` ^1.0.0
 
 ## Commands
 
@@ -40,7 +40,7 @@ tool/check-docs.py               # Offline docs gate, run by docs-link-check.yml
 
 ## Post-Change Checklist
 
-After ANY source code change, sync **before committing**. A change is not done while one of these is stale:
+After any source code change, sync **before committing**. A change is not done while one of these is stale:
 
 1. **`CHANGELOG.md`**: Add entry under `[Unreleased]` section
 2. **`README.md`, `llms.txt` and the `doc/` pages**: Update if features, API, or usage changes
@@ -55,7 +55,7 @@ Every feature, fix, or refactor goes through red-green-refactor: write a failing
 ## Testing
 
 - Every `setUp()` calls `MagicApp.reset()` and `Magic.flush()`; mock by contract inheritance, never mockito
-- `Echo.fake()`, the `BroadcastListeners` registry and `BroadcastManager.extend` are statics that `Magic.flush()` does not clear: in `tearDown` call `Echo.unfake()`, `BroadcastListeners.reset()` and `BroadcastManager.resetDrivers()`, plus `MagicPerfHooks.sink = null` after setting one
+- The `BroadcastListeners` registry and the `BroadcastManager.extend` drivers are statics that `Magic.flush()` does not clear: in `tearDown` call `BroadcastListeners.reset()` and `BroadcastManager.resetDrivers()`, plus `MagicPerfHooks.sink = null` after setting one. `Echo.fake()` lives in the container, so a flush drops it
 - Drive `ReverbBroadcastDriver` through its `channelFactory` and `authFactory` constructor seams; no test opens a real socket
 - Tests mirror `lib/src/` in `test/`; `test/cli/` asserts the CLI tree imports no UI toolkit and not the runtime barrel
 
@@ -72,7 +72,7 @@ Every feature, fix, or refactor goes through red-green-refactor: write a failing
 | Putting `broadcastingConfig` in `configs` | It calls `env()`; register it in `configFactories` |
 | Importing Flutter or the runtime barrel from `lib/src/cli/` | The dowel dispatcher is a pure Dart process; the CLI tree imports `dart:` libraries and the dowel barrel only |
 | Moving `BroadcastReceived` or `MagicPerfHooks` here | They stay in core; the plugin only emits through the sink |
-| Relative paths in `pubspec_overrides.yaml` | Use ABSOLUTE ones; the file is never committed |
+| Relative paths in `pubspec_overrides.yaml` | Use absolute ones; the file is never committed |
 
 ## Release
 

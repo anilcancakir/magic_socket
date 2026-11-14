@@ -155,11 +155,10 @@ void main() {
 <a name="resetting-static-state"></a>
 ## Resetting Static State
 
-`Magic.flush()` and `MagicApp.reset()` clear the container, not the statics this package keeps. Reset them yourself.
+`Magic.flush()` and `MagicApp.reset()` clear the container, and with it the fake `Echo.fake()` bound there, but not the statics this package keeps. Reset them yourself.
 
 | State | Reset in `tearDown` |
 |:------|:--------------------|
-| The fake binding | `Echo.unfake()` |
 | Declared aliases and handlers | `BroadcastListeners.reset()` |
 | Custom drivers | `BroadcastManager.resetDrivers()` |
 | Perf sink, if you set one | `MagicPerfHooks.sink = null` |

@@ -87,6 +87,7 @@ Future<void> main() async {
   print(Echo.connection.runtimeType); // NullBroadcastDriver until BROADCAST_CONNECTION=reverb
   print(Echo.socketId); // null until a real connection is up
 
+  // The name must equal the frame's event name, see Channels > Event Names.
   Echo.channel('orders').listen('OrderShipped', (event) => print(event.data));
 }
 ```
