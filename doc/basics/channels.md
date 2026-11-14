@@ -4,6 +4,7 @@ Subscribe to public, private and presence channels through the `Echo` facade and
 
 - [Basic Usage](#basic-usage)
 - [Quick Reference](#quick-reference)
+- [Event Names](#event-names)
 - [Public Channels](#public-channels)
 - [Private Channels](#private-channels)
 - [Presence Channels](#presence-channels)
@@ -27,7 +28,7 @@ void main() {
 }
 ```
 
-`Echo` is a static facade over the `BroadcastManager` bound at `broadcasting`. It mirrors the Laravel Echo client: `channel`, `private`, `join`, `listen` and `leave`. With the `null` driver the calls succeed and no event ever arrives, so the same code runs in development without a server.
+`Echo` is a static facade over the `BroadcastManager` bound at `broadcasting`. It follows the shape of the Laravel Echo client (`channel`, `private`, `join`, `listen` and `leave`) with differences, the first being [event names](#event-names). With the `null` driver the calls succeed and no event ever arrives, so the same code runs in development without a server.
 
 <a name="quick-reference"></a>
 ## Quick Reference
@@ -43,6 +44,36 @@ void main() {
 | `channel.listen(event, callback)` | `BroadcastChannel` | Registers a handler and returns the channel for chaining. |
 | `channel.stopListening(event)` | `void` | Removes the handler for that event. |
 | `channel.events` | `Stream<BroadcastEvent>` | Every event on the channel, whether or not a handler is registered. |
+
+<a name="event-names"></a>
+## Event Names
+
+`listen` compares the name you pass with the event name in the frame, exactly. Echo JS prepends the event's namespace for you; this driver does not. Laravel names a frame by `broadcastAs()` when the event has one and by its full class name when it has none, so a handler registered for `'OrderShipped'` never runs for a default `App\Events\OrderShipped`.
+
+Name the event on the server and pass the same string to `listen`:
+
+```php
+class OrderShipped implements ShouldBroadcast
+{
+    public function broadcastAs(): string
+    {
+        return 'OrderShipped';
+    }
+}
+```
+
+```dart
+import 'package:magic_socket/magic_socket.dart';
+
+void main() {
+  Echo.channel('orders').listen('OrderShipped', (event) => print(event.data));
+
+  // Without broadcastAs() on the server, pass the full class name instead.
+  Echo.channel('orders').listen(r'App\Events\OrderShipped', (event) => print(event.data));
+}
+```
+
+Echo's leading-dot form (`.OrderShipped`) is not needed and not recognised: pass the name as the frame carries it. Every other sample on this page assumes the event has a `broadcastAs()` equal to the name shown.
 
 <a name="public-channels"></a>
 ## Public Channels
@@ -123,7 +154,7 @@ Every handler receives a `BroadcastEvent`.
 
 | Property | Type | Meaning |
 |:---------|:-----|:--------|
-| `event` | `String` | The event name, for example `App\Events\OrderShipped`. |
+| `event` | `String` | The event name as the server sent it: the event's `broadcastAs()`, or its full class name (`App\Events\OrderShipped`) when it has none. |
 | `channel` | `String` | The channel the event arrived on, with its `private-` or `presence-` prefix. |
 | `data` | `Map<String, dynamic>` | The decoded JSON payload. |
 | `receivedAt` | `DateTime` | The local time of receipt. |
@@ -156,6 +187,7 @@ void main() {
 
 | Mistake | Fix |
 |:--------|:----|
+| Listening for `'OrderShipped'` when the server sends `App\Events\OrderShipped` | The names must match exactly; add `broadcastAs()` to the event or pass the full class name, see [Event Names](#event-names). |
 | Using `Echo.listen` for a private channel | It is shorthand for a public channel; call `Echo.private(name).listen(...)`. |
 | Registering two handlers for one event on one channel | The second replaces the first. Use `BroadcastListeners` to share the event. |
 | Treating `onReconnect` as "the channel is back" | It fires after the subscribe was sent, not confirmed. Refetch on `onSubscriptionChanged` turning `true`. |

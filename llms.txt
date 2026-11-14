@@ -17,6 +17,7 @@ import 'package:magic_socket/magic_socket.dart';
 void main() {
   // plugin:install registers BroadcastServiceProvider in lib/config/app.dart
   // and () => broadcastingConfig in the configFactories of lib/main.dart.
+  // 'OrderShipped' must equal the frame's event name (the server's broadcastAs()).
   Echo.channel('orders').listen('OrderShipped', (event) {
     print('Order ${event.data['id']} has shipped');
   });
@@ -47,10 +48,11 @@ void main() {
 - Import only `package:magic_socket/magic_socket.dart`; the fakes come from `package:magic_socket/testing.dart` in tests.
 - Register `BroadcastServiceProvider` in `providers` and `() => broadcastingConfig` in `configFactories` (not `configs`: it reads `.env`). Neither is automatic.
 - Pass names without `private-` or `presence-`. `Echo.listen` is for public channels; use `Echo.private(name).listen(...)` for private ones.
+- `listen(event, ...)` compares the name with the frame's event name exactly and resolves no namespace, unlike Echo JS. A Laravel event without `broadcastAs()` arrives as its full class name, `App\Events\OrderShipped`: give the event a `broadcastAs()` or pass that full name.
 - Write idempotent handlers: the server can repeat a frame. Refetch on `onSubscriptionChanged` turning `true`, not on `Echo.onReconnect`.
 - `toOthers()` needs the `X-Socket-ID` header: connection other than `null`, a connected socket and `NetworkServiceProvider`.
 - `ListensToBroadcasts` replaces core's removed `make:controller --broadcasts`; a controller never mounted in a view calls `startListening()` itself.
-- In tests, call `MagicApp.reset()` and `Magic.flush()` in `setUp`, and `Echo.unfake()`, `BroadcastListeners.reset()` and `BroadcastManager.resetDrivers()` in `tearDown`: they are statics that `Magic.flush()` does not clear.
+- In tests, call `MagicApp.reset()` and `Magic.flush()` in `setUp` (it drops the fake with the container), and `BroadcastListeners.reset()` and `BroadcastManager.resetDrivers()` in `tearDown`: those are statics that `Magic.flush()` does not clear.
 - Assert `assertListening`, not only `assertSubscribed`; subscribing and listening are separate steps.
 
 ## Docs

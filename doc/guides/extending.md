@@ -71,7 +71,7 @@ class LoggingBroadcastInterceptor extends BroadcastInterceptor {}
 
 Implement `BroadcastDriver` to talk to another transport. The contract has `connect`, `disconnect`, `socketId`, `isConnected`, `connectionState`, `onReconnect`, `channel`, `private`, `join`, `leave` and `addInterceptor`. A channel implements `BroadcastChannel` (`name`, `events`, `isSubscribed`, `onSubscriptionChanged`, `listen`, `stopListening`), and a presence channel adds `members`, `onJoin` and `onLeave`.
 
-Two parts of the contract are obligations, since `AuthChannelSubscription` and `BroadcastListeners` rely on them:
+Three parts of the contract are obligations, since `AuthChannelSubscription` and `BroadcastListeners` rely on them:
 
 | Obligation | Why |
 |:-----------|:----|

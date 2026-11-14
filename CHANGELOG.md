@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 - The package page is `https://anilcancakir.com/magic/socket` and the documentation links sit under `https://anilcancakir.com/magic/docs/socket` (the pub.dev page carries it from the next release).
 
+### Fixed
+
+- The documentation now says that `listen` compares its event name with the frame's event name exactly and resolves no namespace, unlike Echo JS. A Laravel event without `broadcastAs()` arrives as its full class name, so the samples now assume a `broadcastAs()` and the README and the Channels page show it and list the difference from Laravel Echo.
+- The documentation no longer claims that `Echo.fake` survives `Magic.flush()`: the fake lives in the container and the flush drops it; only the `BroadcastListeners` registry and custom drivers are statics to reset.
+- The custom driver guide counts three obligations of the driver contract, not two.
+
 ## [1.0.1] - 2026-11-15
 
 ### Fixed

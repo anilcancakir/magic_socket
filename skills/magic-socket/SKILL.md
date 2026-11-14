@@ -1,8 +1,8 @@
 ---
 name: magic-socket
-description: "Receive real-time broadcasts in a Magic app with the Echo facade, Reverb and null drivers, private and presence channels, and Echo.fake in tests."
+description: "Wire real-time broadcasts into a Magic app with the Echo facade, Reverb and null drivers, and Echo.fake tests."
 version: 1.0.1
-when_to_use: "Use when code imports package:magic_socket or touches Echo, BroadcastServiceProvider, broadcastingConfig, ListensToBroadcasts, BroadcastListeners, FakeBroadcastManager or X-Socket-ID in a Magic app."
+when_to_use: "Use when code imports package:magic_socket or touches Echo, BroadcastServiceProvider, ListensToBroadcasts or X-Socket-ID."
 ---
 
 # magic_socket
@@ -62,11 +62,14 @@ Subscribe and react:
 import 'package:magic_socket/magic_socket.dart';
 
 void watchOrders() {
+  // The name must equal the frame's event name (the server's broadcastAs()).
   Echo.channel('orders').listen('OrderShipped', (event) {
     print('Order ${event.data['id']} has shipped');
   });
 }
 ```
+
+`listen` compares the name with the frame's event name exactly and resolves no namespace, unlike Echo JS. A Laravel event without `broadcastAs()` arrives as its full class name (`App\Events\OrderShipped`), so give the event a `broadcastAs()` or pass the full name.
 
 Join a presence channel:
 
@@ -104,7 +107,7 @@ Future<void> declareTeamChannel(int? teamId) async {
 
 Import `package:magic_socket/testing.dart`. In `setUp()` call `MagicApp.reset()` and `Magic.flush()`. `Echo.fake()` returns a `FakeBroadcastManager`; assert with `assertSubscribed`, `assertNotSubscribed`, `assertListening`, `assertNotListening`, `assertConnected`, `assertDisconnected` and `assertInterceptorAdded`. Private and presence names carry their prefix in assertions (`private-user.1`). `assertSubscribed` does not prove a handler exists, so use `assertListening`, and `fake.dispatch(channel, event, data)` to run it with a decoded payload. `fake.driver.setSubscribed(name, true)` stands in for the server's confirmation.
 
-`Echo.fake`, the `BroadcastListeners` registry and `BroadcastManager.extend` are statics that `Magic.flush()` does not clear. In `tearDown()` call `Echo.unfake()`, `BroadcastListeners.reset()` and `BroadcastManager.resetDrivers()`.
+The `BroadcastListeners` registry and `BroadcastManager.extend` are statics that `Magic.flush()` does not clear: in `tearDown()` call `BroadcastListeners.reset()` and `BroadcastManager.resetDrivers()`. `Echo.fake` binds into the container, so `Magic.flush()` drops it.
 
 ```dart
 import 'package:flutter_test/flutter_test.dart';

@@ -5,7 +5,7 @@
 <h1 align="center">Magic Socket</h1>
 
 <p align="center">
-  <strong>Real-time broadcasting for Magic apps, the Laravel Echo way.</strong><br/>
+  <strong>Real-time broadcasting for Magic apps, with a Laravel Echo style API.</strong><br/>
   The <code>Echo</code> facade subscribes to public, private and presence channels over a Reverb (Pusher protocol) websocket, reconnects on its own and ships a <code>null</code> driver and <code>Echo.fake</code> so the same code runs and tests without a server.
 </p>
 
@@ -63,6 +63,7 @@ Subscribe to a channel and react to its events.
 import 'package:magic_socket/magic_socket.dart';
 
 void main() {
+  // 'OrderShipped' must equal the frame's event name: the broadcastAs() of the Laravel event.
   Echo.channel('orders').listen('OrderShipped', (event) {
     print('Order ${event.data['id']} has shipped');
   });
@@ -88,6 +89,22 @@ void main() {
 | `Echo.connectionState`, `Echo.onReconnect` | `Stream` | Lifecycle transitions and reconnect handshakes. |
 | `Echo.addInterceptor(interceptor)` | `void` | Hooks the driver message pipeline. |
 | `Echo.fake()`, `Echo.unfake()` | `FakeBroadcastManager`, `void` | Swap in the in-memory fake for tests. |
+
+### Differences from Laravel Echo
+
+The API is Echo shaped, not a port, and one difference decides whether a handler runs: `listen` compares the name you pass with the event name in the frame, exactly. Echo JS prepends the event's namespace for you; this driver does not. A Laravel event without `broadcastAs()` goes out under its full class name (`App\Events\OrderShipped`), so a handler registered for `'OrderShipped'` never runs. Name the event on the server, or pass the full class name to `listen`:
+
+```php
+class OrderShipped implements ShouldBroadcast
+{
+    public function broadcastAs(): string
+    {
+        return 'OrderShipped';
+    }
+}
+```
+
+Echo's leading-dot form (`.OrderShipped`) is not needed and not recognised: pass the name as the frame carries it.
 
 Every handler gets a `BroadcastEvent` (`event`, `channel`, `data`, `receivedAt`). A second `listen` for the same event on one channel replaces the first; the server can also repeat a frame, so write idempotent handlers.
 
@@ -164,10 +181,11 @@ Rules for an agent writing code against this package. Each one is a mistake that
 | Use `configFactories`, not `configs`, for `broadcastingConfig` | It calls `env()`, which must run after `.env` loads. |
 | Pass channel names without `private-` or `presence-` | The driver adds the prefix; `fake.assertSubscribed` sees the prefixed name. |
 | Use `Echo.private`, not `Echo.listen`, for a private channel | `Echo.listen` is shorthand for a public channel. |
+| Pass `listen` the event name the frame carries: the server's `broadcastAs()`, or the full class name when it has none | The driver compares names exactly and resolves no namespace as Echo JS does, so `'OrderShipped'` never matches `App\Events\OrderShipped`. |
 | Make handlers idempotent | The server can repeat a frame, and a second `listen` replaces the first. |
 | Refetch on `onSubscriptionChanged` turning `true`, not on `Echo.onReconnect` | `onReconnect` fires before the server confirms the channel. |
 | Add `NetworkServiceProvider` when you rely on `toOthers()` | The `X-Socket-ID` interceptor needs a network driver. |
-| In tests, call `MagicApp.reset()` and `Magic.flush()` in `setUp` and `Echo.unfake()`, `BroadcastListeners.reset()` in `tearDown` | `Echo.fake`, the listener registry and custom drivers are statics that `Magic.flush()` does not clear. |
+| In tests, call `MagicApp.reset()` and `Magic.flush()` in `setUp` and `BroadcastListeners.reset()`, `BroadcastManager.resetDrivers()` in `tearDown` | The listener registry and custom drivers are statics that `Magic.flush()` does not clear; the fake lives in the container, which `Magic.flush()` empties. |
 
 ## Dependencies
 
