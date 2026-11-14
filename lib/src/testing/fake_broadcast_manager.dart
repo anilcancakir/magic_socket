@@ -200,31 +200,47 @@ class FakeBroadcastDriver implements BroadcastDriver {
   @override
   Stream<void> get onReconnect => const Stream.empty();
 
+  /// The handle held for each registered fully-qualified channel name, so a
+  /// second call for that name answers the same one, as the real driver
+  /// does. A leave or a disconnect removes it.
+  final Map<String, _FakeBroadcastChannel> _handles = {};
+
   @override
-  BroadcastChannel channel(String name) {
-    _subscribedChannels.add(name);
-    return _FakeBroadcastChannel(name, this);
-  }
+  BroadcastChannel channel(String name) =>
+      _handles[name] ?? _hold(_FakeBroadcastChannel(name, this));
 
   @override
   BroadcastChannel private(String name) {
-    _subscribedChannels.add('private-$name');
-    return _FakeBroadcastChannel('private-$name', this);
+    final String prefixed = 'private-$name';
+
+    return _handles[prefixed] ?? _hold(_FakeBroadcastChannel(prefixed, this));
   }
 
   @override
   BroadcastPresenceChannel join(String name) {
-    _subscribedChannels.add('presence-$name');
-    return _FakeBroadcastPresenceChannel('presence-$name', this);
+    final String prefixed = 'presence-$name';
+    final _FakeBroadcastChannel? held = _handles[prefixed];
+    if (held is _FakeBroadcastPresenceChannel) return held;
+
+    return _hold<_FakeBroadcastPresenceChannel>(
+      _FakeBroadcastPresenceChannel(prefixed, this),
+    );
+  }
+
+  /// Records the subscription of [channel] and holds it under its name.
+  T _hold<T extends _FakeBroadcastChannel>(T channel) {
+    _subscribedChannels.add(channel.name);
+    _handles[channel.name] = channel;
+
+    return channel;
   }
 
   /// Event handlers registered through [BroadcastChannel.listen], keyed by
   /// channel name and then by event name.
   ///
-  /// The driver owns this rather than the channel because the channel factories
-  /// above mint a NEW channel object on every call and keep no reference, so a
-  /// registration recorded on the channel would vanish the moment the caller let
-  /// go of it. That is what made a listener registration untestable.
+  /// The driver owns this rather than the channel, so [FakeBroadcastManager]
+  /// asserts and dispatches against one place, and a leave or a disconnect
+  /// forgets a channel's handlers in the same step that drops its handle.
   final Map<String, Map<String, void Function(BroadcastEvent)>> _listeners = {};
 
   /// Registered event names per channel, for low-level inspection.
@@ -300,6 +316,7 @@ class FakeBroadcastDriver implements BroadcastDriver {
     setSubscribed(channel, false);
     _confirmed.remove(channel);
     _confirmationStreams.remove(channel)?.close();
+    _handles.remove(channel);
   }
 
   /// Forgets every channel the driver has recorded in any form.

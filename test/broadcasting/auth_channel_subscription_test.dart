@@ -22,9 +22,6 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 class _CountingBroadcastDriver extends FakeBroadcastDriver {
   int connectCount = 0;
 
-  /// How many times a private channel was registered through [private].
-  int privateCount = 0;
-
   /// When set, the next [connect] emits `connecting` on [connectionState]
   /// and then throws, instead of succeeding. Simulates the real Reverb
   /// driver's `connect()` failing after its own `connecting` announcement
@@ -52,12 +49,6 @@ class _CountingBroadcastDriver extends FakeBroadcastDriver {
     }
     _dropped = false;
     return super.connect();
-  }
-
-  @override
-  BroadcastChannel private(String name) {
-    privateCount++;
-    return super.private(name);
   }
 
   /// Loses the socket the way a network drop does: the driver reports itself
@@ -350,13 +341,30 @@ void main() {
 
     expect(counting.spy.connectCount, 2);
     expect(
-      counting.spy.privateCount,
-      1,
+      counting.spy.subscribedChannels.where(
+        (String c) => c == 'private-teams.1',
+      ),
+      hasLength(1),
       reason:
           'the driver still holds the channel and subscribes it on its '
           'next handshake',
     );
   });
+
+  testWidgets('a sync for an unchanged name completes under fake async without '
+      'pumping time', (WidgetTester tester) async {
+    final AuthChannelSubscription subscription = AuthChannelSubscription(
+      channelName: () => 'teams.1',
+      listeners: <String, void Function(BroadcastEvent)>{},
+    );
+    await subscription.sync();
+
+    await subscription.sync();
+    Echo.leave('teams.1');
+    await subscription.sync();
+
+    echo.assertSubscribed('private-teams.1');
+  }, timeout: const Timeout(Duration(seconds: 5)));
 
   test('an Echo.leave() followed by a sync with no await between registers '
       'the channel again', () async {

@@ -579,6 +579,34 @@ void main() {
       expect(done, isTrue);
     });
 
+    test('channel(), private() and join() of a registered name return the '
+        'held handle and record no new registration', () {
+      final fake = FakeBroadcastManager();
+      final driver = fake.connection();
+
+      final public = driver.channel('orders');
+      final private = driver.private('chat.1');
+      final presence = driver.join('room.1');
+
+      expect(driver.channel('orders'), same(public));
+      expect(driver.private('chat.1'), same(private));
+      expect(driver.join('room.1'), same(presence));
+      expect(fake.driver.subscribedChannels, [
+        'orders',
+        'private-chat.1',
+        'presence-room.1',
+      ]);
+
+      driver.leave('chat.1');
+
+      expect(driver.private('chat.1'), isNot(same(private)));
+      expect(fake.driver.subscribedChannels, [
+        'orders',
+        'presence-room.1',
+        'private-chat.1',
+      ]);
+    });
+
     test('a handle kept past a leave never reaches the channel subscribed '
         'again under its name', () async {
       final fake = FakeBroadcastManager();
