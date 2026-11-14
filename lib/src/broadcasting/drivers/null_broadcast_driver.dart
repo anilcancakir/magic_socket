@@ -105,7 +105,7 @@ class _NullBroadcastChannel implements BroadcastChannel {
   bool get isSubscribed => false;
 
   @override
-  /// Never emits: the subscription state never changes.
+  /// Never emits and ends at once: the subscription state never changes.
   Stream<bool> get onSubscriptionChanged => const Stream<bool>.empty();
 
   @override

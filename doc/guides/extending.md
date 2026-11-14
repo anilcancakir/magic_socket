@@ -17,7 +17,7 @@ A `BroadcastInterceptor` sits in the driver pipeline, the same idea as `MagicNet
 |:-----|:---------|:--------|:--------|
 | `onSend(message)` | `Map<String, dynamic>` | `Map<String, dynamic>` | Before an outbound frame; return an empty map to suppress it. |
 | `onReceive(event)` | `BroadcastEvent` | `BroadcastEvent` | On an inbound event; return a modified event to pass it on. |
-| `onError(error)` | `dynamic` | `dynamic` | On a driver error; return a replacement to recover. |
+| `onError(error)` | `dynamic` | `dynamic` | On a driver error, including a malformed frame; the next interceptor gets what this one returns. A `BroadcastEvent` returned by the last one is delivered to the listeners of the channel it names, without `onReceive`. |
 
 ```dart
 import 'package:magic/magic.dart';
@@ -70,6 +70,15 @@ class LoggingBroadcastInterceptor extends BroadcastInterceptor {}
 ## Custom Drivers
 
 Implement `BroadcastDriver` to talk to another transport. The contract has `connect`, `disconnect`, `socketId`, `isConnected`, `connectionState`, `onReconnect`, `channel`, `private`, `join`, `leave` and `addInterceptor`. A channel implements `BroadcastChannel` (`name`, `events`, `isSubscribed`, `onSubscriptionChanged`, `listen`, `stopListening`), and a presence channel adds `members`, `onJoin` and `onLeave`.
+
+Two parts of the contract are obligations, since `AuthChannelSubscription` and `BroadcastListeners` rely on them:
+
+| Obligation | Why |
+|:-----------|:----|
+| `leave(name)` drops `name` and its `private-` and `presence-` forms. | `Echo.leave('chat.1')` must leave the channel `Echo.private('chat.1')` or `Echo.join('chat.1')` opened, as Laravel Echo does. |
+| A channel's `onSubscriptionChanged` ends when the driver disposes it (a leave or a disconnect). | The stream ending tells a subscription the channel is gone, so its next `sync()` registers it again. |
+
+`NullBroadcastDriver` subscribes nothing, so its `onSubscriptionChanged` is an empty stream that ends at once. A driver built on it that sends a real subscribe from `private()` is therefore registered again on every `sync()`; override `private()` and `join()` with channels whose stream stays open until they are disposed.
 
 <a name="registering-a-driver"></a>
 ## Registering a Driver

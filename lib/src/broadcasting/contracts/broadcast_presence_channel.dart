@@ -8,7 +8,7 @@ import 'broadcast_channel.dart';
 /// notifications.
 ///
 /// ```dart
-/// final channel = Echo.join('presence-room.1');
+/// final channel = Echo.join('room.1');
 /// channel.onJoin.listen((member) => print('${member['user_id']} joined'));
 /// channel.onLeave.listen((member) => print('${member['user_id']} left'));
 /// ```

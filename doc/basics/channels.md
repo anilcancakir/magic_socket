@@ -38,7 +38,7 @@ void main() {
 | `Echo.private(name)` | `BroadcastChannel` | A private channel; the driver adds `private-` and authorises over HTTP. |
 | `Echo.join(name)` | `BroadcastPresenceChannel` | A presence channel; the driver adds `presence-` and tracks members. |
 | `Echo.listen(channel, event, callback)` | `BroadcastChannel` | Shorthand for `Echo.channel(channel).listen(event, callback)`. |
-| `Echo.leave(name)` | `void` | Unsubscribes; no effect when not subscribed. |
+| `Echo.leave(name)` | `void` | Unsubscribes `name` and its `private-` and `presence-` forms, as Laravel Echo does: `leave('chat.1')` leaves `private('chat.1')`, `join('chat.1')` and a public `chat.1`. No effect when not subscribed. |
 | `Echo.connect()`, `Echo.disconnect()` | `Future<void>` | Opens or closes the socket, see [Connection](../guides/connection.md). |
 | `channel.listen(event, callback)` | `BroadcastChannel` | Registers a handler and returns the channel for chaining. |
 | `channel.stopListening(event)` | `void` | Removes the handler for that event. |

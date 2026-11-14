@@ -57,9 +57,11 @@ Every assertion throws an `AssertionError` with a descriptive message.
 | `assertSubscribed(channel)`, `assertNotSubscribed(channel)` | The name is, or is not, in the subscribed list. Private and presence names carry their prefix: `private-user.1`. |
 | `assertListening(channel, event)`, `assertNotListening(channel, event)` | A handler is, or is not, registered for the event on the channel. |
 | `assertInterceptorAdded()` | At least one interceptor was added. |
-| `reset()` | Clears all recorded state; confirmed channels emit `false` first. |
+| `reset()` | Disconnects and clears all recorded state, interceptors included; confirmed channels emit `false`, then every channel's `onSubscriptionChanged` ends. |
 
 Subscribing and listening are separate steps, and only `assertListening` covers the second. `assertSubscribed` passes for an app that holds a live channel and registers no handler at all, so a deleted `listen()` line is invisible to it. Assert the line your realtime feature depends on.
+
+The fake forgets a channel the way the Reverb driver does. `Echo.disconnect()` forgets every channel, and `Echo.leave(name)` forgets `name` and its `private-` and `presence-` forms: each one leaves `subscribedChannels`, loses its handlers, emits `false` if it was confirmed, and its `onSubscriptionChanged` stream ends. After either call `assertSubscribed`, `assertListening` and `dispatch` fail for those channels until the code subscribes them again, and a subscription that registers its channel again after a disconnect (an `AuthChannelSubscription` on its next `sync()`) adds a new entry to `subscribedChannels`.
 
 `fake.driver` exposes the recorded state for low-level checks:
 

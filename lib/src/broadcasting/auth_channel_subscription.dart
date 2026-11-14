@@ -41,9 +41,10 @@ import 'contracts/broadcast_channel.dart';
 ///
 /// An `Echo.disconnect()` made elsewhere disposes the channel this class
 /// holds. The next [sync] reconnects, registers the channel again with its
-/// [listeners], and fires [onReconnect] on its first confirmation, since
-/// whatever was published while the socket was gone is lost. Until that
-/// [sync] runs the channel receives nothing.
+/// [listeners], and fires [onReconnect] on its first confirmation (at once
+/// when another consumer already had it confirmed again), since whatever was
+/// published while the socket was gone is lost. Until that [sync] runs the
+/// channel receives nothing.
 ///
 /// A `null` [channelName] tears the subscription down by calling
 /// `Echo.disconnect()` on the default connection, which drops every channel
@@ -184,7 +185,7 @@ class AuthChannelSubscription {
         await _connectOrLog(name);
       }
       if (_channelDisposed) {
-        _adopt(Echo.private(name), skipFirst: false);
+        _readopt(Echo.private(name));
       }
       return;
     }
@@ -224,6 +225,20 @@ class AuthChannelSubscription {
     _channel = channel;
     _channelDisposed = false;
     _listenForReconnect(channel, skipFirst: skipFirst);
+  }
+
+  /// Adopts [channel] again after the driver disposed the held one, and
+  /// refetches: whatever was published while the socket was gone is lost.
+  ///
+  /// Another consumer may have registered the channel again and seen it
+  /// confirmed before this runs. The confirmation stream never replays, so
+  /// that refetch is made here; otherwise it comes with the first
+  /// confirmation.
+  void _readopt(BroadcastChannel channel) {
+    _adopt(channel, skipFirst: false);
+    if (channel.isSubscribed) {
+      onReconnect?.call();
+    }
   }
 
   /// Asks the default connection to connect, logging a failure instead of

@@ -2947,7 +2947,125 @@ void main() {
 
       await driver.disconnect();
     });
+
+    test('a handshake whose activity_timeout is not an int stores no state, '
+        'not even the socket_id read before it', () async {
+      final (driver, mock) = await _createConnectedDriver();
+
+      mock.simulateMessage({
+        'event': 'pusher:connection_established',
+        'data': jsonEncode(<String, dynamic>{
+          'socket_id': 'other-socket-id',
+          'activity_timeout': '45',
+        }),
+      });
+      await _pump();
+
+      expect(driver.socketId, 'test-socket-id');
+      expect(driver.activityTimeout, 30);
+
+      await driver.disconnect();
+    });
+
+    test('a malformed handshake with no interceptor is logged as a '
+        'warning, not dropped silently', () async {
+      final fakeLog = Log.fake();
+      final (driver, mock) = await _createConnectedDriver();
+
+      mock.simulateMessage({
+        'event': 'pusher:connection_established',
+        'data': jsonEncode(<String, dynamic>{'activity_timeout': 30}),
+      });
+      await _pump();
+
+      final warnings = fakeLog.entries.where(
+        (e) => e.level == 'warning' && e.message.contains('malformed frame'),
+      );
+      expect(warnings, hasLength(1));
+
+      await driver.disconnect();
+    });
+
+    test('a TypeError thrown by an interceptor onReceive escapes to the '
+        'zone, not into the malformed frame path', () async {
+      final fakeLog = Log.fake();
+      final uncaught = <Object>[];
+      final recorder = _TestInterceptor();
+      late ReverbBroadcastDriver driver;
+      late _MockWebSocketChannel mock;
+      // The socket listener runs in the zone connect() was called from, so
+      // an error the driver does not catch lands in this handler.
+      await runZonedGuarded(() async {
+        (driver, mock) = await _createConnectedDriver();
+      }, (error, _) => uncaught.add(error));
+      driver
+        ..addInterceptor(recorder)
+        ..addInterceptor(_CastingReceiveInterceptor())
+        ..channel('orders');
+
+      mock.simulateMessage({
+        'event': 'OrderShipped',
+        'channel': 'orders',
+        'data': '{"id":"not-an-int"}',
+      });
+      await _pump();
+
+      expect(uncaught.whereType<TypeError>(), hasLength(1));
+      expect(recorder.receivedEvents, hasLength(1));
+      expect(recorder.errors, isEmpty);
+      expect(
+        fakeLog.entries.where((e) => e.message.contains('malformed frame')),
+        isEmpty,
+      );
+
+      await driver.disconnect();
+    });
+
+    test('an onError that throws while a pusher:error frame is routed is '
+        'called once and its error escapes', () async {
+      final uncaught = <Object>[];
+      final throwing = _ThrowingErrorInterceptor();
+      late ReverbBroadcastDriver driver;
+      late _MockWebSocketChannel mock;
+      await runZonedGuarded(() async {
+        (driver, mock) = await _createConnectedDriver();
+      }, (error, _) => uncaught.add(error));
+      driver.addInterceptor(throwing);
+
+      mock.simulateMessage({'event': 'pusher:error', 'data': '{}'});
+      await _pump();
+
+      expect(throwing.calls, 1);
+      expect(uncaught, hasLength(1));
+      expect(uncaught.single, same(throwing.thrown));
+
+      await driver.disconnect();
+    });
   });
+}
+
+/// Reads an int id off every received event, as app code might, and so
+/// throws a [TypeError] for an event whose id is not one.
+class _CastingReceiveInterceptor extends BroadcastInterceptor {
+  @override
+  BroadcastEvent onReceive(BroadcastEvent event) {
+    if ((event.data['id'] as int) < 0) {
+      throw ArgumentError.value(event.data['id'], 'id');
+    }
+    return event;
+  }
+}
+
+/// Throws [thrown] from every `onError`, counting the calls.
+class _ThrowingErrorInterceptor extends BroadcastInterceptor {
+  final StateError thrown = StateError('interceptor failed');
+  int calls = 0;
+
+  @override
+  dynamic onError(dynamic error) {
+    calls++;
+    throw thrown;
+  }
 }
 
 /// The channel names [socket] sent a `pusher:unsubscribe` for, in order.

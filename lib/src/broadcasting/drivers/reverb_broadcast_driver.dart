@@ -405,24 +405,7 @@ class ReverbBroadcastDriver implements BroadcastDriver {
       },
     );
 
-    controller.stream.listen((raw) {
-      // A malformed frame is a protocol error, not a reason to lose the
-      // socket: route it through the interceptor error chain and keep
-      // reading. StateError is a frame without an 'event' key,
-      // FormatException a frame that is not JSON, and TypeError a field of
-      // the wrong shape (a missing or non-string socket_id, a JSON array
-      // where an object belongs). Uncaught, the last two escaped as async
-      // errors from the socket's listener.
-      try {
-        _onMessage(raw);
-      } on StateError catch (error) {
-        _routeError(error);
-      } on FormatException catch (error) {
-        _routeError(error);
-      } on TypeError catch (error) {
-        _routeError(error);
-      }
-    }, onError: _routeError);
+    controller.stream.listen(_onMessage, onError: _routeError);
 
     final timeout = _config['connection_timeout'] as int? ?? 15;
     return completer.future.timeout(
@@ -579,14 +562,17 @@ class ReverbBroadcastDriver implements BroadcastDriver {
   // ---------------------------------------------------------------------------
 
   void _onMessage(dynamic raw) {
-    final json = jsonDecode(raw as String) as Map<String, dynamic>;
-    final event = json['event'] as String?;
-
-    if (event == null) {
-      throw StateError(
-        'Received WebSocket frame without required "event" key: $json',
-      );
-    }
+    final frame = _readFrame(() {
+      final json = jsonDecode(raw as String) as Map<String, dynamic>;
+      final event =
+          json['event'] as String? ??
+          (throw StateError(
+            'Received WebSocket frame without required "event" key: $json',
+          ));
+      return (json, event);
+    });
+    if (frame == null) return;
+    final (json, event) = frame;
 
     _resetActivityTimer();
 
@@ -597,27 +583,62 @@ class ReverbBroadcastDriver implements BroadcastDriver {
         _sendPong();
       case 'pusher:subscription_succeeded' ||
           'pusher_internal:subscription_succeeded':
-        _handleSubscriptionSucceeded(json);
+        _readFrame(() => _handleSubscriptionSucceeded(json));
       case 'pusher:error':
         _handlePusherError(json);
-      case 'pusher_internal:member_added':
-        _handlePresenceEvent(json);
-      case 'pusher_internal:member_removed':
-        _handlePresenceEvent(json);
+      case 'pusher_internal:member_added' || 'pusher_internal:member_removed':
+        _readFrame(() => _handlePresenceEvent(json));
       default:
         _handleApplicationEvent(json);
     }
   }
 
+  /// Runs [read], the parsing of an incoming frame, and answers its result,
+  /// or `null` once a malformed frame has been dropped.
+  ///
+  /// A malformed frame is a protocol error, not a reason to lose the socket:
+  /// it is logged, routed through the interceptors' `onError`, and the socket
+  /// keeps reading. A [FormatException] is a payload that is not JSON, a
+  /// [TypeError] a field of the wrong shape (a missing or non-string
+  /// `socket_id`, a JSON array where an object belongs), and a [StateError] a
+  /// frame without an `event` key. [read] must call no app code (an
+  /// interceptor, a send): an error from one would be taken for a malformed
+  /// frame and swallowed, where it belongs to the caller's zone.
+  T? _readFrame<T>(T Function() read) {
+    try {
+      return read();
+    } on FormatException catch (error) {
+      _dropMalformedFrame(error);
+    } on TypeError catch (error) {
+      _dropMalformedFrame(error);
+    } on StateError catch (error) {
+      _dropMalformedFrame(error);
+    }
+    return null;
+  }
+
+  /// Logs the [error] a malformed frame raised and routes it through the
+  /// interceptors, so the drop is seen even when no interceptor is
+  /// registered.
+  void _dropMalformedFrame(Object error) {
+    Log.warning('Broadcasting dropped a malformed frame: $error');
+    _routeError(error);
+  }
+
   void _handleConnectionEstablished(Map<String, dynamic> json) {
     // 1. Adopt the socket identity the server assigned. Every field is read
-    // before any is stored, so a malformed handshake throws with the
+    // before any is stored, so a malformed handshake is dropped with the
     // driver's state untouched.
-    final data = jsonDecode(json['data'] as String) as Map<String, dynamic>;
-    final socketId = data['socket_id'] as String;
-    final timeout =
+    final handshake = _readFrame(() {
+      final data = jsonDecode(json['data'] as String) as Map<String, dynamic>;
+      return (
+        data['socket_id'] as String,
         data['activity_timeout'] as int? ??
-        (_config['activity_timeout'] as int? ?? 120);
+            (_config['activity_timeout'] as int? ?? 120),
+      );
+    });
+    if (handshake == null) return;
+    final (socketId, timeout) = handshake;
     _socketId = socketId;
     activityTimeout = timeout;
     _isConnected = true;
@@ -677,7 +698,9 @@ class ReverbBroadcastDriver implements BroadcastDriver {
   /// socket, so reconnecting on it tore down a healthy connection, and on an
   /// immediate code did so in a loop. When the server does mean to end the
   /// connection it closes the socket, and the close code decides in
-  /// [_onDone].
+  /// [_onDone]. It runs outside the frame guard of [_readFrame], so an
+  /// interceptor's `onError` is called once per frame and what it throws
+  /// reaches the caller's zone.
   void _handlePusherError(Map<String, dynamic> json) {
     _routeError(StateError('Pusher error: ${json['data']}'));
   }
@@ -724,13 +747,32 @@ class ReverbBroadcastDriver implements BroadcastDriver {
   }
 
   void _handleApplicationEvent(Map<String, dynamic> json) {
+    // 1. Parse the frame; an unknown channel or a malformed one ends here.
+    final parsed = _readFrame(() => _parseApplicationEvent(json));
+    if (parsed == null) return;
+    var (ch, event) = parsed;
+
+    // 2. Run the onReceive chain outside the frame guard: what an
+    // interceptor throws is the app's error, not a malformed frame.
+    for (final interceptor in _interceptors) {
+      event = interceptor.onReceive(event);
+    }
+
+    ch.addEvent(event);
+  }
+
+  /// Builds the [BroadcastEvent] an application frame carries, with the
+  /// channel it is for, or `null` when the frame names no channel the driver
+  /// holds.
+  (ReverbBroadcastChannel, BroadcastEvent)? _parseApplicationEvent(
+    Map<String, dynamic> json,
+  ) {
     final channelName = json['channel'] as String?;
-    if (channelName == null) return;
+    if (channelName == null) return null;
 
     final ch = _channels[channelName];
-    if (ch == null) return;
+    if (ch == null) return null;
 
-    final eventName = json['event'] as String;
     final rawData = json['data'];
 
     // Double-JSON decode: if data is a String, decode it. Anything that is
@@ -742,19 +784,15 @@ class ReverbBroadcastDriver implements BroadcastDriver {
         ? decoded
         : <String, dynamic>{};
 
-    var event = BroadcastEvent(
-      event: eventName,
-      channel: channelName,
-      data: data,
-      receivedAt: DateTime.now(),
+    return (
+      ch,
+      BroadcastEvent(
+        event: json['event'] as String,
+        channel: channelName,
+        data: data,
+        receivedAt: DateTime.now(),
+      ),
     );
-
-    // Interceptor chain: onReceive.
-    for (final interceptor in _interceptors) {
-      event = interceptor.onReceive(event);
-    }
-
-    ch.addEvent(event);
   }
 
   // ---------------------------------------------------------------------------

@@ -6,10 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- `Echo.leave('chat.1')` now leaves the channel `Echo.private('chat.1')` or `Echo.join('chat.1')` opened, as Laravel Echo does; it used to keep the server subscription and its listeners alive. The prefixed name still works, and `Echo.fake` behaves the same.
-- An `AuthChannelSubscription` (and so `ListensToBroadcasts` and `BroadcastListeners`) receives events again after an `Echo.disconnect()` made elsewhere: its next `sync` registers the channel again and fires `onReconnect` once it is confirmed. `Echo.fake`'s `disconnect` now forgets every channel and handler, as the real driver does.
+- `Echo.leave('chat.1')` now leaves the channel `Echo.private('chat.1')` or `Echo.join('chat.1')` opened, as Laravel Echo does; it used to keep the server subscription and its listeners alive. It drops all three forms of the name, so it also leaves a public `chat.1`. The prefixed name still works, and `Echo.fake` behaves the same.
+- An `AuthChannelSubscription` (and so `ListensToBroadcasts` and `BroadcastListeners`) receives events again after an `Echo.disconnect()` made elsewhere: its next `sync` registers the channel again and fires `onReconnect` once it is confirmed, or at once when another consumer already had it confirmed again.
+- `Echo.fake`'s `disconnect`, `leave` and `reset` now forget the handlers and recorded subscriptions of the channels they drop and end those channels' `onSubscriptionChanged` streams, as the real driver does. A test that calls `assertSubscribed`, `assertListening` or `dispatch` after `Echo.disconnect()` or `Echo.leave(x)` now fails, and a test counting `private()` registrations sees more of them, since a subscription registers its channel again after a disconnect.
 - A `BroadcastInterceptor` whose `onSend` returns an empty map now suppresses the frame, and a `BroadcastEvent` returned from `onError` now reaches the listeners of its channel, as the contract promised.
-- A websocket frame that is not JSON, or a handshake with a missing or non-string `socket_id`, no longer escapes as an uncaught error: it reaches the interceptors' `onError` and the connection keeps delivering events.
+- A websocket frame that is not JSON, or a handshake with a missing or non-string field, no longer escapes as an uncaught error: it is logged as a warning, passed to the interceptors' `onError`, and the connection keeps delivering events. An error thrown by an interceptor's `onReceive`, `onSend` or `onError` still reaches the app's zone, and `onError` runs once per error.
 
 ## [1.0.0] - 2026-11-14
 

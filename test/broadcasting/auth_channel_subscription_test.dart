@@ -22,16 +22,25 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 class _CountingBroadcastDriver extends FakeBroadcastDriver {
   int connectCount = 0;
 
+  /// How many times a private channel was registered through [private].
+  int privateCount = 0;
+
   /// When set, the next [connect] emits `connecting` on [connectionState]
   /// and then throws, instead of succeeding. Simulates the real Reverb
   /// driver's `connect()` failing after its own `connecting` announcement
   /// (e.g. the server unreachable at boot).
   bool failNextConnect = false;
 
+  /// Set by [drop] until the next [connect].
+  bool _dropped = false;
+
   final StreamController<void> _reconnectController =
       StreamController<void>.broadcast();
   final StreamController<BroadcastConnectionState> _connectionStateController =
       StreamController<BroadcastConnectionState>.broadcast();
+
+  @override
+  bool get isConnected => !_dropped && super.isConnected;
 
   @override
   Future<void> connect() async {
@@ -41,8 +50,20 @@ class _CountingBroadcastDriver extends FakeBroadcastDriver {
       _connectionStateController.add(BroadcastConnectionState.connecting);
       throw StateError('connect failed');
     }
+    _dropped = false;
     return super.connect();
   }
+
+  @override
+  BroadcastChannel private(String name) {
+    privateCount++;
+    return super.private(name);
+  }
+
+  /// Loses the socket the way a network drop does: the driver reports itself
+  /// disconnected but keeps every channel, which the Reverb driver subscribes
+  /// again on its next handshake. Unlike [disconnect], nothing is forgotten.
+  void drop() => _dropped = true;
 
   @override
   Stream<void> get onReconnect => _reconnectController.stream;
@@ -171,6 +192,32 @@ class _RecordingSink implements WebSocketSink {
   Future<void> get done => Future<void>.value();
 }
 
+/// Binds a [ReverbBroadcastDriver] with `reconnect: false` as the default
+/// `Echo` connection. Every socket it opens is a [_ScriptedSocket] appended to
+/// [sockets] with socket id `socket-<index>`, and every auth call is signed.
+ReverbBroadcastDriver _bindReverbDriver(List<_ScriptedSocket> sockets) {
+  final ReverbBroadcastDriver driver = ReverbBroadcastDriver(
+    <String, dynamic>{
+      'host': 'localhost',
+      'port': 8080,
+      'scheme': 'ws',
+      'app_key': 'test-app-key',
+      'reconnect': false,
+    },
+    channelFactory: (Uri uri) {
+      final _ScriptedSocket socket = _ScriptedSocket(
+        'socket-${sockets.length + 1}',
+      );
+      sockets.add(socket);
+      return socket;
+    },
+    authFactory: (String endpoint, Map<String, dynamic> data) async =>
+        <String, dynamic>{'auth': 'sig-${data['socket_id']}'},
+  );
+  Magic.app.setInstance('broadcasting', _DriverManager(driver));
+  return driver;
+}
+
 void main() {
   late FakeBroadcastManager echo;
 
@@ -287,6 +334,30 @@ void main() {
     );
   });
 
+  test('an unchanged name after a mere socket drop asks the driver to '
+      'connect without registering the channel again', () async {
+    final _CountingBroadcastManager counting = _CountingBroadcastManager();
+    Magic.app.setInstance('broadcasting', counting);
+
+    final AuthChannelSubscription subscription = AuthChannelSubscription(
+      channelName: () => 'teams.1',
+      listeners: <String, void Function(BroadcastEvent)>{},
+    );
+
+    await subscription.sync();
+    counting.spy.drop();
+    await subscription.sync();
+
+    expect(counting.spy.connectCount, 2);
+    expect(
+      counting.spy.privateCount,
+      1,
+      reason:
+          'the driver still holds the channel and subscribes it on its '
+          'next handshake',
+    );
+  });
+
   test('an external Echo.disconnect() then a sync registers the channel '
       'again and a dispatched event reaches its listener', () async {
     final List<BroadcastEvent> received = <BroadcastEvent>[];
@@ -336,25 +407,7 @@ void main() {
   test('on the Reverb driver, an external Echo.disconnect() then a sync '
       'receives server events again and fires onReconnect', () async {
     final List<_ScriptedSocket> sockets = <_ScriptedSocket>[];
-    final ReverbBroadcastDriver driver = ReverbBroadcastDriver(
-      <String, dynamic>{
-        'host': 'localhost',
-        'port': 8080,
-        'scheme': 'ws',
-        'app_key': 'test-app-key',
-        'reconnect': false,
-      },
-      channelFactory: (Uri uri) {
-        final _ScriptedSocket socket = _ScriptedSocket(
-          'socket-${sockets.length + 1}',
-        );
-        sockets.add(socket);
-        return socket;
-      },
-      authFactory: (String endpoint, Map<String, dynamic> data) async =>
-          <String, dynamic>{'auth': 'sig-${data['socket_id']}'},
-    );
-    Magic.app.setInstance('broadcasting', _DriverManager(driver));
+    final ReverbBroadcastDriver driver = _bindReverbDriver(sockets);
 
     final List<BroadcastEvent> received = <BroadcastEvent>[];
     int reconnectCount = 0;
@@ -386,6 +439,48 @@ void main() {
 
     await driver.disconnect();
   });
+
+  test(
+    'on the Reverb driver, a sync after an external Echo.disconnect() '
+    'that finds the channel already confirmed again fires onReconnect',
+    () async {
+      final List<_ScriptedSocket> sockets = <_ScriptedSocket>[];
+      final ReverbBroadcastDriver driver = _bindReverbDriver(sockets);
+
+      int reconnectCount = 0;
+      final AuthChannelSubscription subscription = AuthChannelSubscription(
+        channelName: () => 'teams.1',
+        listeners: <String, void Function(BroadcastEvent)>{},
+        onReconnect: () => reconnectCount++,
+      );
+      await subscription.sync();
+      await flushMicrotasks();
+      sockets.first.confirm('private-teams.1');
+      await flushMicrotasks();
+
+      // Another consumer registers the channel again and the server confirms
+      // it before this subscription's next sync, so its confirmation stream
+      // has nothing left to replay.
+      await Echo.disconnect();
+      Echo.private('teams.1');
+      await Echo.connect();
+      await flushMicrotasks();
+      sockets.last.confirm('private-teams.1');
+      await flushMicrotasks();
+      expect(Echo.private('teams.1').isSubscribed, isTrue);
+
+      await subscription.sync();
+      await flushMicrotasks();
+
+      expect(
+        reconnectCount,
+        1,
+        reason: 'events published while the socket was gone are lost',
+      );
+
+      await driver.disconnect();
+    },
+  );
 
   test(
     'a failed connect is retried by the next sync for the same name',
