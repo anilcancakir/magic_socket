@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-15
+
 ### Fixed
 
 - `Echo.leave('chat.1')` now leaves the channel `Echo.private('chat.1')` or `Echo.join('chat.1')` opened, as Laravel Echo does; it used to keep the server subscription and its listeners alive. It drops all three forms of the name, so it also leaves a public `chat.1`. The prefixed name still works, and `Echo.fake` behaves the same.
