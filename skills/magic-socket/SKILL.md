@@ -1,7 +1,7 @@
 ---
 name: magic-socket
 description: "Receive real-time broadcasts in a Magic app with the Echo facade, Reverb and null drivers, private and presence channels, and Echo.fake in tests."
-version: 1.0.0
+version: 1.0.1
 when_to_use: "Use when code imports package:magic_socket or touches Echo, BroadcastServiceProvider, broadcastingConfig, ListensToBroadcasts, BroadcastListeners, FakeBroadcastManager or X-Socket-ID in a Magic app."
 ---
 
