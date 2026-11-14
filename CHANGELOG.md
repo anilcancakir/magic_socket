@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- The package page and every documentation link name the new location under `https://anilcancakir.com/magic/socket` (the pub.dev page carries it from the next release).
+- The package page is `https://anilcancakir.com/magic/socket` and the documentation links sit under `https://anilcancakir.com/magic/docs/socket` (the pub.dev page carries it from the next release).
 
 ### Fixed
 
