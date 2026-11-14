@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- The package page is `https://anilcancakir.com/magic/socket` and the documentation links sit under `https://anilcancakir.com/magic/docs/socket` (the pub.dev page carries it from the next release).
+
 ## [1.0.1] - 2026-11-15
 
 ### Fixed

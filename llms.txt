@@ -55,13 +55,13 @@ void main() {
 
 ## Docs
 
-- [Installation](https://anilcancakir.com/magic_socket/docs/getting-started/installation.md): install, requirements, registering the provider and config, a short check.
-- [Channels](https://anilcancakir.com/magic_socket/docs/basics/channels.md): public, private and presence channels, the event envelope, subscription state.
-- [Configuration](https://anilcancakir.com/magic_socket/docs/basics/configuration.md): connections, environment keys, Reverb options, the socket id header.
-- [Listeners](https://anilcancakir.com/magic_socket/docs/basics/listeners.md): `BroadcastListeners`, `ListensToBroadcasts`, `AuthChannelSubscription`.
-- [Connection](https://anilcancakir.com/magic_socket/docs/guides/connection.md): lifecycle, resubscription, auth failures, backoff, close codes, timeouts.
-- [Extending](https://anilcancakir.com/magic_socket/docs/guides/extending.md): interceptors and custom drivers.
-- [Testing](https://anilcancakir.com/magic_socket/docs/guides/testing.md): `Echo.fake`, assertions, `dispatch`, resetting statics.
+- [Installation](https://anilcancakir.com/magic/docs/socket/getting-started/installation.md): install, requirements, registering the provider and config, a short check.
+- [Channels](https://anilcancakir.com/magic/docs/socket/basics/channels.md): public, private and presence channels, the event envelope, subscription state.
+- [Configuration](https://anilcancakir.com/magic/docs/socket/basics/configuration.md): connections, environment keys, Reverb options, the socket id header.
+- [Listeners](https://anilcancakir.com/magic/docs/socket/basics/listeners.md): `BroadcastListeners`, `ListensToBroadcasts`, `AuthChannelSubscription`.
+- [Connection](https://anilcancakir.com/magic/docs/socket/guides/connection.md): lifecycle, resubscription, auth failures, backoff, close codes, timeouts.
+- [Extending](https://anilcancakir.com/magic/docs/socket/guides/extending.md): interceptors and custom drivers.
+- [Testing](https://anilcancakir.com/magic/docs/socket/guides/testing.md): `Echo.fake`, assertions, `dispatch`, resetting statics.
 
 ## Links
 
