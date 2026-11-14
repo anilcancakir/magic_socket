@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- `Echo.leave('chat.1')` now leaves the channel `Echo.private('chat.1')` or `Echo.join('chat.1')` opened, as Laravel Echo does; it used to keep the server subscription and its listeners alive. The prefixed name still works, and `Echo.fake` behaves the same.
+- An `AuthChannelSubscription` (and so `ListensToBroadcasts` and `BroadcastListeners`) receives events again after an `Echo.disconnect()` made elsewhere: its next `sync` registers the channel again and fires `onReconnect` once it is confirmed. `Echo.fake`'s `disconnect` now forgets every channel and handler, as the real driver does.
+- A `BroadcastInterceptor` whose `onSend` returns an empty map now suppresses the frame, and a `BroadcastEvent` returned from `onError` now reaches the listeners of its channel, as the contract promised.
+- A websocket frame that is not JSON, or a handshake with a missing or non-string `socket_id`, no longer escapes as an uncaught error: it reaches the interceptors' `onError` and the connection keeps delivering events.
+
 ## [1.0.0] - 2026-11-14
 
 ### Added

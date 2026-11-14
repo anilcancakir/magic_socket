@@ -22,7 +22,9 @@ abstract class BroadcastInterceptor {
   /// Called before an outbound message is sent to the server.
   ///
   /// [message] is the raw payload map. Return the (optionally modified) map
-  /// to allow the message to proceed, or an empty map to suppress it.
+  /// to allow the message to proceed, or an empty map to suppress it: the
+  /// frame is not sent and the interceptors after this one are not called.
+  /// Suppressing a `pusher:pong` lets the server time the socket out.
   Map<String, dynamic> onSend(Map<String, dynamic> message) => message;
 
   /// Called when a [BroadcastEvent] is received from the server.
@@ -34,6 +36,11 @@ abstract class BroadcastInterceptor {
   /// Called when the driver encounters an error.
   ///
   /// Return the original [error] to propagate it, or return a replacement
-  /// value to recover (e.g. a fallback [BroadcastEvent]).
+  /// value to recover (e.g. a fallback [BroadcastEvent]). The next
+  /// interceptor receives whatever this one returns. When the last one
+  /// returns a [BroadcastEvent], the driver delivers it to the listeners of
+  /// the channel it names, without passing it through [onReceive]. The
+  /// driver's own handling of the failure (a reconnect, an auth retry, a log
+  /// entry) runs whatever is returned.
   dynamic onError(dynamic error) => error;
 }

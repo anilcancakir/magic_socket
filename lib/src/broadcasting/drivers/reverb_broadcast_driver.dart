@@ -406,11 +406,20 @@ class ReverbBroadcastDriver implements BroadcastDriver {
     );
 
     controller.stream.listen((raw) {
+      // A malformed frame is a protocol error, not a reason to lose the
+      // socket: route it through the interceptor error chain and keep
+      // reading. StateError is a frame without an 'event' key,
+      // FormatException a frame that is not JSON, and TypeError a field of
+      // the wrong shape (a missing or non-string socket_id, a JSON array
+      // where an object belongs). Uncaught, the last two escaped as async
+      // errors from the socket's listener.
       try {
         _onMessage(raw);
       } on StateError catch (error) {
-        // Protocol violation (e.g. missing 'event' key). Route through
-        // interceptor error chain rather than crashing the subscription.
+        _routeError(error);
+      } on FormatException catch (error) {
+        _routeError(error);
+      } on TypeError catch (error) {
         _routeError(error);
       }
     }, onError: _routeError);
@@ -484,8 +493,27 @@ class ReverbBroadcastDriver implements BroadcastDriver {
     );
   }
 
+  /// Leaves every channel held under [name]: the channel itself and its
+  /// `private-` and `presence-` forms, as Laravel Echo's `leave` does.
+  ///
+  /// [private] and [join] store the prefixed name, so leaving only the exact
+  /// key kept `private('chat.1')` subscribed after `leave('chat.1')`. A
+  /// prefixed [name] still leaves that channel.
   @override
   void leave(String name) {
+    for (final candidate in <String>[name, 'private-$name', 'presence-$name']) {
+      _leaveExact(candidate);
+    }
+  }
+
+  @override
+  void addInterceptor(BroadcastInterceptor interceptor) {
+    _interceptors.add(interceptor);
+  }
+
+  /// Unsubscribes and disposes the channel registered under exactly [name],
+  /// when there is one.
+  void _leaveExact(String name) {
     final ch = _channels.remove(name);
     if (ch == null) return;
 
@@ -495,11 +523,6 @@ class ReverbBroadcastDriver implements BroadcastDriver {
     });
 
     ch.dispose();
-  }
-
-  @override
-  void addInterceptor(BroadcastInterceptor interceptor) {
-    _interceptors.add(interceptor);
   }
 
   /// Records [channel] and subscribes it now when a socket is up.
@@ -587,12 +610,16 @@ class ReverbBroadcastDriver implements BroadcastDriver {
   }
 
   void _handleConnectionEstablished(Map<String, dynamic> json) {
-    // 1. Adopt the socket identity the server assigned.
+    // 1. Adopt the socket identity the server assigned. Every field is read
+    // before any is stored, so a malformed handshake throws with the
+    // driver's state untouched.
     final data = jsonDecode(json['data'] as String) as Map<String, dynamic>;
-    _socketId = data['socket_id'] as String;
-    activityTimeout =
+    final socketId = data['socket_id'] as String;
+    final timeout =
         data['activity_timeout'] as int? ??
         (_config['activity_timeout'] as int? ?? 120);
+    _socketId = socketId;
+    activityTimeout = timeout;
     _isConnected = true;
     _attempt = 0;
 
@@ -657,10 +684,21 @@ class ReverbBroadcastDriver implements BroadcastDriver {
 
   /// Passes [error] through the interceptor chain, each interceptor taking
   /// the previous one's result.
+  ///
+  /// When the chain answers a [BroadcastEvent] (the recovery
+  /// [BroadcastInterceptor.onError] names), the event is delivered to the
+  /// listeners of the channel it names, provided the driver holds that
+  /// channel. It skips `onReceive`: it already came out of the interceptors.
+  /// Any other answer ends here; the driver's own handling of the failure
+  /// (reconnect, auth retry, log) runs either way.
   void _routeError(Object error) {
     dynamic processed = error;
     for (final interceptor in _interceptors) {
       processed = interceptor.onError(processed);
+    }
+
+    if (processed is BroadcastEvent) {
+      _channels[processed.channel]?.addEvent(processed);
     }
   }
 
@@ -1016,15 +1054,20 @@ class ReverbBroadcastDriver implements BroadcastDriver {
     _send({'event': 'pusher:pong', 'data': <String, dynamic>{}});
   }
 
+  /// Passes [payload] through every interceptor's `onSend`, then writes it to
+  /// the socket.
+  ///
+  /// An interceptor answering an empty map suppresses the frame, as
+  /// [BroadcastInterceptor.onSend] promises: nothing is written and the
+  /// interceptors after it are not called.
   void _send(Map<String, dynamic> payload) {
-    // Interceptor chain: onSend.
     var message = payload;
     for (final interceptor in _interceptors) {
       message = interceptor.onSend(message);
+      if (message.isEmpty) return;
     }
 
-    final encoded = jsonEncode(message);
-    _channel?.sink.add(encoded);
+    _channel?.sink.add(jsonEncode(message));
   }
 }
 

@@ -481,4 +481,102 @@ void main() {
       fake.assertNotListening('private-teams.1', 'ping');
     });
   });
+
+  group('leave() by the unprefixed name', () {
+    test('leave() with the name given to private() drops the private channel '
+        'and its handlers', () {
+      final fake = FakeBroadcastManager();
+      fake.connection().private('chat.1').listen('Sent', (_) {});
+
+      fake.connection().leave('chat.1');
+
+      fake.assertNotSubscribed('private-chat.1');
+      fake.assertNotListening('private-chat.1', 'Sent');
+    });
+
+    test(
+      'leave() with the name given to join() drops the presence channel',
+      () {
+        final fake = FakeBroadcastManager();
+        fake.connection().join('room.1');
+
+        fake.connection().leave('room.1');
+
+        fake.assertNotSubscribed('presence-room.1');
+      },
+    );
+
+    test('leave() with the prefixed name still drops the channel', () {
+      final fake = FakeBroadcastManager();
+      fake.connection().private('chat.1').listen('Sent', (_) {});
+
+      fake.connection().leave('private-chat.1');
+
+      fake.assertNotSubscribed('private-chat.1');
+      fake.assertNotListening('private-chat.1', 'Sent');
+    });
+
+    test('leave() drops every recorded call for the channel', () {
+      final fake = FakeBroadcastManager();
+      fake.connection()
+        ..channel('orders')
+        ..channel('orders');
+
+      fake.connection().leave('orders');
+
+      fake.assertNotSubscribed('orders');
+    });
+
+    test('leave() ends the channel subscription stream', () async {
+      final fake = FakeBroadcastManager();
+      final channel = fake.connection().private('chat.1');
+      fake.driver.setSubscribed('private-chat.1', true);
+      final List<bool> changes = [];
+      bool done = false;
+      channel.onSubscriptionChanged.listen(
+        changes.add,
+        onDone: () => done = true,
+      );
+
+      fake.connection().leave('chat.1');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(changes, [false]);
+      expect(done, isTrue);
+    });
+  });
+
+  group('disconnect() forgets every channel, as the real driver does', () {
+    test('disconnect() drops handlers and subscriptions', () async {
+      final fake = FakeBroadcastManager();
+      await fake.connection().connect();
+      fake.connection().private('teams.1').listen('ping', (_) {});
+
+      await fake.connection().disconnect();
+
+      fake.assertNotListening('private-teams.1', 'ping');
+      fake.assertNotSubscribed('private-teams.1');
+    });
+
+    test('disconnect() reports confirmed channels unsubscribed and ends their '
+        'subscription streams', () async {
+      final fake = FakeBroadcastManager();
+      await fake.connection().connect();
+      final channel = fake.connection().private('teams.1');
+      fake.driver.setSubscribed('private-teams.1', true);
+      final List<bool> changes = [];
+      bool done = false;
+      channel.onSubscriptionChanged.listen(
+        changes.add,
+        onDone: () => done = true,
+      );
+
+      await fake.connection().disconnect();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(channel.isSubscribed, isFalse);
+      expect(changes, [false]);
+      expect(done, isTrue);
+    });
+  });
 }

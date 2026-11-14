@@ -39,6 +39,12 @@ import 'contracts/broadcast_channel.dart';
 /// confirmation; several subscriptions refetching the same data should
 /// still coalesce.
 ///
+/// An `Echo.disconnect()` made elsewhere disposes the channel this class
+/// holds. The next [sync] reconnects, registers the channel again with its
+/// [listeners], and fires [onReconnect] on its first confirmation, since
+/// whatever was published while the socket was gone is lost. Until that
+/// [sync] runs the channel receives nothing.
+///
 /// A `null` [channelName] tears the subscription down by calling
 /// `Echo.disconnect()` on the default connection, which drops every channel
 /// the app subscribed elsewhere through `Echo`, not just this one. That is
@@ -96,6 +102,12 @@ class AuthChannelSubscription {
   /// The subscribed [BroadcastChannel], retained so it can be left by its own
   /// fully-qualified (prefixed) name.
   BroadcastChannel? _channel;
+
+  /// Whether the driver disposed [_channel], learned from its
+  /// `onSubscriptionChanged` stream ending. The Reverb driver ends it on a
+  /// leave and on `disconnect()`, after which the channel never receives
+  /// another event, so the next [sync] registers the channel again.
+  bool _channelDisposed = false;
 
   /// Whether a [sync] is currently running; serializes overlapping calls.
   bool _syncing = false;
@@ -160,14 +172,19 @@ class AuthChannelSubscription {
       return;
     }
 
-    // 2. Already on this channel: the driver holds it and subscribes it on
-    //    every handshake, so it is never registered again. With the socket
-    //    down, ask for one: a driver with `reconnect: false` never retries on
-    //    its own, and the Reverb driver's `connect()` is idempotent on one
-    //    that does.
+    // 2. Already on this channel. With the socket down, ask for one: a driver
+    //    with `reconnect: false` never retries on its own, and the Reverb
+    //    driver's `connect()` is idempotent on one that does. A dropped
+    //    socket leaves the channel with the driver, which subscribes it on
+    //    every handshake, so it is not registered again. A
+    //    `Echo.disconnect()` from elsewhere disposes every channel instead,
+    //    and the held one stays deaf until it is registered again.
     if (_subscribedName == name) {
       if (!Echo.connection.isConnected) {
         await _connectOrLog(name);
+      }
+      if (_channelDisposed) {
+        _adopt(Echo.private(name), skipFirst: false);
       }
       return;
     }
@@ -191,16 +208,22 @@ class AuthChannelSubscription {
     //    every registered channel and subscribes it on its next handshake, so
     //    skipping this during a server restart would leave the channel unknown
     //    to a driver that later recovers on its own.
-    final BroadcastChannel channel = Echo.private(name);
+    _adopt(Echo.private(name), skipFirst: connectedAtRegistration);
+    _subscribedName = name;
+  }
+
+  /// Attaches [listeners] to [channel], holds it, and wires the
+  /// confirmation-time refetch so a reconnect closes the gap.
+  ///
+  /// [skipFirst] is forwarded to [_listenForReconnect].
+  void _adopt(BroadcastChannel channel, {required bool skipFirst}) {
     for (final MapEntry<String, void Function(BroadcastEvent)> entry
         in listeners.entries) {
       channel.listen(entry.key, entry.value);
     }
     _channel = channel;
-    _subscribedName = name;
-
-    // 5. Wire the confirmation-time refetch so a reconnect closes the gap.
-    _listenForReconnect(channel, skipFirst: connectedAtRegistration);
+    _channelDisposed = false;
+    _listenForReconnect(channel, skipFirst: skipFirst);
   }
 
   /// Asks the default connection to connect, logging a failure instead of
@@ -265,6 +288,9 @@ class AuthChannelSubscription {
   /// registered on a live socket, since the screen's own load just ran; a
   /// channel registered while the connect failed refetches on its first
   /// confirmation, which may come long after that load.
+  ///
+  /// The stream ending marks [channel] disposed, unless it is no longer the
+  /// held one (this class left it for a new name).
   void _listenForReconnect(
     BroadcastChannel channel, {
     required bool skipFirst,
@@ -273,13 +299,20 @@ class AuthChannelSubscription {
     bool pendingSkip = skipFirst && !channel.isSubscribed;
     _confirmationSubscription = channel.onSubscriptionChanged
         .where((bool subscribed) => subscribed)
-        .listen((_) {
-          if (pendingSkip) {
-            pendingSkip = false;
-            return;
-          }
-          onReconnect?.call();
-        });
+        .listen(
+          (_) {
+            if (pendingSkip) {
+              pendingSkip = false;
+              return;
+            }
+            onReconnect?.call();
+          },
+          onDone: () {
+            if (identical(_channel, channel)) {
+              _channelDisposed = true;
+            }
+          },
+        );
   }
 
   /// Cancels the confirmation subscription, if any.

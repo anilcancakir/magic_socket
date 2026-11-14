@@ -34,7 +34,9 @@ abstract class BroadcastChannel {
   /// `subscription_succeeded`, `false` on a drop or a leave.
   ///
   /// Multi-subscription and never replays, so read [isSubscribed] for the
-  /// state at the moment a listener attaches.
+  /// state at the moment a listener attaches. Ends when the driver disposes
+  /// the channel (a leave or a disconnect), after which the channel receives
+  /// nothing; `AuthChannelSubscription` registers it again on its next sync.
   Stream<bool> get onSubscriptionChanged;
 
   /// Registers a [callback] to be invoked whenever [event] is received.

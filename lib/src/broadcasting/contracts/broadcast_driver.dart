@@ -62,7 +62,10 @@ abstract class BroadcastDriver {
   /// presence auth handshake to obtain membership data.
   BroadcastPresenceChannel join(String name);
 
-  /// Unsubscribes from the channel identified by [name].
+  /// Unsubscribes from the channel identified by [name], and from its
+  /// `private-` and `presence-` forms, as Laravel Echo's `leave` does: the
+  /// name given to [private] or [join] leaves that channel, and a prefixed
+  /// [name] still leaves it too.
   ///
   /// Has no effect if the channel was not previously subscribed.
   void leave(String name);

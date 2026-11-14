@@ -14,9 +14,19 @@ import '../contracts/broadcast_presence_channel.dart';
 /// compile and run without a real server.
 ///
 /// ```dart
-/// Magic.init(
-///   providers: [BroadcastServiceProvider()],
-///   config: {'broadcasting': {'default': 'null'}},
+/// await Magic.init(
+///   configs: [
+///     {
+///       'app': {
+///         'providers': [
+///           (app) => BroadcastServiceProvider(app),
+///         ],
+///       },
+///       'broadcasting': {
+///         'default': 'null',
+///       },
+///     },
+///   ],
 /// );
 /// ```
 class NullBroadcastDriver implements BroadcastDriver {
