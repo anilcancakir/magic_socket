@@ -1,7 +1,7 @@
 name: magic_socket
 description: "Real-time broadcasting for Magic apps: the Echo facade, Reverb and null drivers, private and presence channels."
 version: 1.0.0
-homepage: https://anilcancakir.com/magic_socket
+homepage: https://anilcancakir.com/magic/socket
 repository: https://github.com/anilcancakir/magic_socket
 issue_tracker: https://github.com/anilcancakir/magic_socket/issues
 
