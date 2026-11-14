@@ -141,6 +141,18 @@ class _HangingWebSocketChannel extends _MockWebSocketChannel {
   WebSocketSink get sink => _deadSink;
 }
 
+/// A socket whose stream is single-subscription, as a real one is: what
+/// arrives before the driver listens is buffered, not dropped.
+class _BufferingWebSocketChannel extends _MockWebSocketChannel {
+  final StreamController<dynamic> _buffered = StreamController<dynamic>();
+
+  @override
+  Stream<dynamic> get stream => _buffered.stream;
+
+  @override
+  void simulateError(Object error) => _buffered.addError(error);
+}
+
 // ---------------------------------------------------------------------------
 // Test interceptor
 // ---------------------------------------------------------------------------
@@ -1105,6 +1117,54 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       expect(interceptor.errors, isNotEmpty);
+
+      await driver.disconnect();
+    });
+
+    test('a socket error reaches onError once and its recovery event is '
+        'delivered once', () async {
+      final (driver, mock) = await _createConnectedDriver(
+        configOverrides: {'reconnect': false},
+      );
+      final received = <BroadcastEvent>[];
+      driver.channel('orders').listen('OrdersStale', received.add);
+      var calls = 0;
+      driver.addInterceptor(
+        _ReplacingInterceptor((_) {
+          calls++;
+          return BroadcastEvent(
+            event: 'OrdersStale',
+            channel: 'orders',
+            data: const <String, dynamic>{},
+            receivedAt: DateTime.now(),
+          );
+        }),
+      );
+
+      mock.simulateError(Exception('connection reset'));
+      await _pump();
+
+      expect(calls, 1);
+      expect(received, hasLength(1));
+
+      await driver.disconnect();
+    });
+
+    test('a socket error buffered before the driver listens reaches onError '
+        'once and fails the connect', () async {
+      final socket = _BufferingWebSocketChannel();
+      final driver = ReverbBroadcastDriver(
+        _defaultConfig(overrides: {'reconnect': false}),
+        channelFactory: (_) => socket,
+      );
+      final interceptor = _TestInterceptor();
+      driver.addInterceptor(interceptor);
+      socket.simulateError(Exception('refused mid-upgrade'));
+
+      await expectLater(driver.connect(), throwsA(isA<Exception>()));
+      await _pump();
+
+      expect(interceptor.errors, hasLength(1));
 
       await driver.disconnect();
     });

@@ -578,5 +578,29 @@ void main() {
       expect(changes, [false]);
       expect(done, isTrue);
     });
+
+    test('a handle kept past a leave never reaches the channel subscribed '
+        'again under its name', () async {
+      final fake = FakeBroadcastManager();
+      final stale = fake.connection().private('chat.1');
+      fake.connection().leave('chat.1');
+      final fresh = fake.connection().private('chat.1');
+      final List<BroadcastEvent> staleEvents = [];
+      final List<BroadcastEvent> freshEvents = [];
+
+      fresh.listen('Sent', freshEvents.add);
+      stale
+        ..listen('Sent', staleEvents.add)
+        ..listen('Edited', staleEvents.add)
+        ..stopListening('Sent');
+      fake.driver.setSubscribed('private-chat.1', true);
+      fake.dispatch('private-chat.1', 'Sent', const <String, dynamic>{});
+
+      expect(stale.isSubscribed, isFalse);
+      expect(fresh.isSubscribed, isTrue);
+      expect(staleEvents, isEmpty);
+      expect(freshEvents, hasLength(1));
+      fake.assertNotListening('private-chat.1', 'Edited');
+    });
   });
 }

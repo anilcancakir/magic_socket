@@ -358,6 +358,61 @@ void main() {
     );
   });
 
+  test('an Echo.leave() followed by a sync with no await between registers '
+      'the channel again', () async {
+    final List<BroadcastEvent> received = <BroadcastEvent>[];
+    final AuthChannelSubscription subscription = AuthChannelSubscription(
+      channelName: () => 'teams.1',
+      listeners: <String, void Function(BroadcastEvent)>{
+        'incident.opened': received.add,
+      },
+    );
+    await subscription.sync();
+
+    Echo.leave('teams.1');
+    await subscription.sync();
+
+    echo.assertSubscribed('private-teams.1');
+    echo.dispatch('private-teams.1', 'incident.opened', const <String, dynamic>{
+      'id': 'i4',
+    });
+    expect(received.single.data['id'], 'i4');
+  });
+
+  test('on the Reverb driver, an Echo.leave() followed by a sync with no '
+      'await between subscribes the channel again', () async {
+    final List<_ScriptedSocket> sockets = <_ScriptedSocket>[];
+    final ReverbBroadcastDriver driver = _bindReverbDriver(sockets);
+    final List<BroadcastEvent> received = <BroadcastEvent>[];
+    final AuthChannelSubscription subscription = AuthChannelSubscription(
+      channelName: () => 'teams.1',
+      listeners: <String, void Function(BroadcastEvent)>{
+        'incident.opened': received.add,
+      },
+    );
+    await subscription.sync();
+    await flushMicrotasks();
+    sockets.single.confirm('private-teams.1');
+    await flushMicrotasks();
+
+    Echo.leave('teams.1');
+    await subscription.sync();
+    await flushMicrotasks();
+
+    expect(
+      sockets.single.subscribedChannels.where(
+        (String c) => c == 'private-teams.1',
+      ),
+      hasLength(2),
+    );
+    sockets.single.confirm('private-teams.1');
+    sockets.single.deliver('private-teams.1', 'incident.opened', '{"id":"i5"}');
+    await flushMicrotasks();
+    expect(received.single.data['id'], 'i5');
+
+    await driver.disconnect();
+  });
+
   test('an external Echo.disconnect() then a sync registers the channel '
       'again and a dispatched event reaches its listener', () async {
     final List<BroadcastEvent> received = <BroadcastEvent>[];

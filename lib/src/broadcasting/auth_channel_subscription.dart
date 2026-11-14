@@ -184,6 +184,11 @@ class AuthChannelSubscription {
       if (!Echo.connection.isConnected) {
         await _connectOrLog(name);
       }
+      // A leave or disconnect ends the channel's stream through the
+      // microtask queue, a driver-dependent number of microtasks later, so a
+      // sync started right after one would read a stale `_channelDisposed`.
+      // One timer turn drains that queue first.
+      await Future<void>.delayed(Duration.zero);
       if (_channelDisposed) {
         _readopt(Echo.private(name));
       }

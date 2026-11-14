@@ -338,6 +338,12 @@ class _FakeBroadcastChannel implements BroadcastChannel {
   /// object even after the name is subscribed again.
   final StreamController<bool> _confirmations;
 
+  /// Whether a leave or a disconnect disposed this handle. A disposed handle
+  /// is detached from the name: a channel subscribed again under it gets a
+  /// new handle, and this one neither reports that channel's state nor
+  /// touches its handlers, as a disposed Reverb channel does.
+  bool get _disposed => _confirmations.isClosed;
+
   @override
   String get name => _name;
 
@@ -345,7 +351,7 @@ class _FakeBroadcastChannel implements BroadcastChannel {
   Stream<BroadcastEvent> get events => const Stream.empty();
 
   @override
-  bool get isSubscribed => _driver._confirmed[_name] ?? false;
+  bool get isSubscribed => !_disposed && (_driver._confirmed[_name] ?? false);
 
   @override
   Stream<bool> get onSubscriptionChanged => _confirmations.stream;
@@ -360,13 +366,19 @@ class _FakeBroadcastChannel implements BroadcastChannel {
     // subscription line could be deleted from an application and its whole suite
     // stayed green: the one line every broadcast depends on was the one line
     // nothing covered.
-    _driver._register(_name, event, callback);
+    if (!_disposed) {
+      _driver._register(_name, event, callback);
+    }
 
     return this;
   }
 
   @override
-  void stopListening(String event) => _driver._unregister(_name, event);
+  void stopListening(String event) {
+    if (_disposed) return;
+
+    _driver._unregister(_name, event);
+  }
 }
 
 // ---------------------------------------------------------------------------

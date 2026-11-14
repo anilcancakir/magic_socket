@@ -391,6 +391,9 @@ class ReverbBroadcastDriver implements BroadcastDriver {
     // Wrap the single-subscription stream as a broadcast stream. The
     // callbacks check the generation: a socket that was already dropped
     // must not tear down, or reconnect over, the socket that replaced it.
+    // A socket error goes to [_onError] only, never into the controller:
+    // forwarding it as well routed it through the interceptors a second
+    // time, so a recovery event was delivered twice.
     final controller = _broadcastStreamController =
         StreamController<dynamic>.broadcast();
     _streamSubscription = channel.stream.listen(
@@ -400,12 +403,11 @@ class ReverbBroadcastDriver implements BroadcastDriver {
         if (generation == _generation) _onDone(channel.closeCode);
       },
       onError: (Object error) {
-        controller.addError(error);
         if (generation == _generation) _onError(error);
       },
     );
 
-    controller.stream.listen(_onMessage, onError: _routeError);
+    controller.stream.listen(_onMessage);
 
     final timeout = _config['connection_timeout'] as int? ?? 15;
     return completer.future.timeout(
