@@ -76,9 +76,10 @@ Two parts of the contract are obligations, since `AuthChannelSubscription` and `
 | Obligation | Why |
 |:-----------|:----|
 | `leave(name)` drops `name` and its `private-` and `presence-` forms. | `Echo.leave('chat.1')` must leave the channel `Echo.private('chat.1')` or `Echo.join('chat.1')` opened, as Laravel Echo does. |
-| A channel's `onSubscriptionChanged` ends when the driver disposes it (a leave or a disconnect). | The stream ending tells a subscription the channel is gone, so its next `sync()` registers it again. |
+| `channel(name)`, `private(name)` and `join(name)` return the instance they already hold for a registered name, and a new one only after a leave or a disconnect. | A subscription calls `private(name)` on every `sync()` and compares identity with the channel it holds: the same instance means the channel is live, another means it was left or disconnected, so the subscription registers it again. |
+| A channel's `onSubscriptionChanged` ends when the driver disposes it (a leave or a disconnect). | Listeners attached to a disposed channel learn that it receives nothing any more. |
 
-`NullBroadcastDriver` subscribes nothing, so its `onSubscriptionChanged` is an empty stream that ends at once. A driver built on it that sends a real subscribe from `private()` is therefore registered again on every `sync()`; override `private()` and `join()` with channels whose stream stays open until they are disposed.
+`NullBroadcastDriver` subscribes nothing and mints a new channel on every call, so a subscription on it registers again on every `sync()`; that does nothing, because its channels are never confirmed. A driver built on it that sends a real subscribe from `private()` must override `private()` and `join()` to hold one channel per name, or it subscribes again on every `sync()` and a confirmed channel fires `onReconnect` each time.
 
 <a name="registering-a-driver"></a>
 ## Registering a Driver
