@@ -1,7 +1,7 @@
 ---
 name: magic-socket
 description: "Receive real-time broadcasts in a Magic app with the Echo facade, Reverb and null drivers, private and presence channels, and Echo.fake in tests."
-version: 0.0.1
+version: 1.0.0
 when_to_use: "Use when code imports package:magic_socket or touches Echo, BroadcastServiceProvider, broadcastingConfig, ListensToBroadcasts, BroadcastListeners, FakeBroadcastManager or X-Socket-ID in a Magic app."
 ---
 
@@ -18,7 +18,7 @@ flutter pub add magic_socket
 dart run magic:dowel plugin:install magic_socket
 ```
 
-Requires Dart >=3.13, Flutter >=3.47 and `magic` ^0.1.0. The installer adds `BroadcastServiceProvider` to `lib/config/app.dart` and `() => broadcastingConfig` to the `configFactories` of `lib/main.dart`; it publishes no config. Import only `package:magic_socket/magic_socket.dart`. Set `.env`:
+Requires Dart >=3.13, Flutter >=3.47 and `magic` ^1.0.0. The installer adds `BroadcastServiceProvider` to `lib/config/app.dart` and `() => broadcastingConfig` to the `configFactories` of `lib/main.dart`; it publishes no config. Import only `package:magic_socket/magic_socket.dart`. Set `.env`:
 
 ```dotenv
 BROADCAST_CONNECTION=reverb

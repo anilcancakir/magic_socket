@@ -4,7 +4,7 @@
 
 Real-time broadcasting for the Magic Framework: the `Echo` facade, `BroadcastManager`, the Reverb (Pusher protocol websocket) and null drivers, private and presence channels, `BroadcastServiceProvider` with the `broadcastingConfig` factory, `SocketIdInterceptor`, the `ListensToBroadcasts` mixin over `BroadcastListeners` and `AuthChannelSubscription`, and the `Echo.fake` test double.
 
-**Version:** 0.0.1 · **Dart:** >=3.13.0 · **Flutter:** >=3.47.0 · **Requires:** `magic` ^0.1.0
+**Version:** 1.0.0 · **Dart:** >=3.13.0 · **Flutter:** >=3.47.0 · **Requires:** `magic` ^1.0.0
 
 ## Commands
 
@@ -77,10 +77,10 @@ Every feature, fix, or refactor goes through red-green-refactor: write a failing
 ## Release
 
 1. Open a `release:` PR that bumps `pubspec.yaml`, `skills/magic-socket/SKILL.md` and the `Version:` line above, and promotes `[Unreleased]` in `CHANGELOG.md`.
-2. After it merges, tag the merge commit with the bare version (`git tag 0.0.2 && git push origin 0.0.2`, no `v`). `publish.yml` runs from the tag; the pub.dev Admin tab holds repository `anilcancakir/magic_socket`, tag pattern `{{version}}` and push events only.
+2. After it merges, tag the merge commit with the bare version (`git tag 1.0.1 && git push origin 1.0.1`, no `v`). `publish.yml` runs from the tag; the pub.dev Admin tab holds repository `anilcancakir/magic_socket`, tag pattern `{{version}}` and push events only.
 3. A failed `validate` is fixed forward: delete the tag (`git push --delete origin <tag>` and `git tag -d <tag>`), fix it on a PR and tag the new merge commit. If only `github-release` fails after pub.dev accepted the version, use "Re-run failed jobs" (never "Re-run all jobs") or `gh release create <tag> --title <tag> --latest --verify-tag --notes-file <file>`.
 
-The first publish (0.0.1) is a manual `flutter pub publish`, since tag-triggered OIDC cannot create a package.
+The first publish (1.0.0) is a manual `flutter pub publish`, since tag-triggered OIDC cannot create a package.
 
 ## CI
 
