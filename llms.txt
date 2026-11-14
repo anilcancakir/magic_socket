@@ -1,0 +1,71 @@
+# magic_socket
+
+> Real-time broadcasting for Magic apps: the `Echo` facade subscribes to public, private and presence channels over a Reverb (Pusher protocol) websocket driver or a no-op `null` driver, `BroadcastServiceProvider` wires the manager and the `X-Socket-ID` header, and `Echo.fake` tests it all without a server.
+
+**Stack**: Flutter >=3.47.0 · Dart >=3.13.0 · Requires `magic` ^0.1.0 · Runtime deps: `magic`, `web_socket_channel`; dowel runs the installer. No mocking library.
+
+**Setup**:
+
+```bash
+flutter pub add magic_socket
+dart run magic:dowel plugin:install magic_socket
+```
+
+```dart
+import 'package:magic_socket/magic_socket.dart';
+
+void main() {
+  // plugin:install registers BroadcastServiceProvider in lib/config/app.dart
+  // and () => broadcastingConfig in the configFactories of lib/main.dart.
+  Echo.channel('orders').listen('OrderShipped', (event) {
+    print('Order ${event.data['id']} has shipped');
+  });
+}
+```
+
+`.env`: `BROADCAST_CONNECTION` (default `null`), `REVERB_HOST` (`localhost`), `REVERB_PORT` (`8080`), `REVERB_SCHEME` (`ws`), `REVERB_APP_KEY` (empty).
+
+## API
+
+- `Echo` (facade, all static): `channel(name)` and `private(name)` return `BroadcastChannel`; `join(name)` returns `BroadcastPresenceChannel`; `listen(channel, event, callback)` is a public-channel shorthand; `leave(name)`; `connect()`, `disconnect()`; `socketId`, `connectionState`, `onReconnect`, `connection`, `manager`; `addInterceptor(interceptor)`; `fake()` and `unfake()`.
+- `BroadcastChannel`: `name`, `events`, `isSubscribed`, `onSubscriptionChanged`, `listen(event, callback)` (chainable; a second call for one event replaces the first), `stopListening(event)`. `BroadcastPresenceChannel` adds `members`, `onJoin`, `onLeave`.
+- `BroadcastEvent`: `event`, `channel`, `data` (decoded map), `receivedAt`. `BroadcastConnectionState`: `connecting`, `connected`, `disconnected`, `reconnecting`.
+- Drivers: `ReverbBroadcastDriver` (reconnect with backoff and jitter, activity ping, resubscribe on every handshake, `BroadcastAuthException` on a refused auth) and `NullBroadcastDriver`. `BroadcastManager.extend(name, factory)` registers a custom `BroadcastDriver`; `BroadcastInterceptor` hooks `onSend`, `onReceive`, `onError`.
+- `BroadcastServiceProvider`: `register()` binds the manager at `broadcasting`; `boot()` starts the default connection without waiting (skipped for `null`) and adds `SocketIdInterceptor` when a network driver is bound.
+- `broadcastingConfig`: env-reading config getter, registered through `configFactories`. Reverb keys: `host`, `port`, `scheme`, `app_key`, `auth_endpoint` (`/broadcasting/auth`), `reconnect`, `max_reconnect_delay` (30000 ms), `activity_timeout` (120 s), `connection_timeout` (15 s).
+- `ListensToBroadcasts` (mixin on `MagicController`): `listeners` keyed `'<alias>:<event>'`, `startListening()`. `BroadcastListeners`: `channel(alias, name, {onReconnect})`, `sync()`, `add`, `remove`. `AuthChannelSubscription`: one auth-scoped private channel kept in sync by `sync()`.
+- Testing (`package:magic_socket/testing.dart`): `FakeBroadcastManager` with `assertConnected`, `assertDisconnected`, `assertSubscribed`, `assertNotSubscribed`, `assertListening`, `assertNotListening`, `assertInterceptorAdded`, `dispatch(channel, event, data)`, `reset`; `fake.driver.setSubscribed(name, value)`.
+
+## Platforms
+
+- Android, iOS, web, macOS, Windows, Linux (pure Dart websocket through `web_socket_channel`).
+- The `null` driver needs no server. Private and presence auth is `POST /broadcasting/auth` through `Http`, so the app needs a network driver (`NetworkServiceProvider`).
+- Core `magic` keeps only the `BroadcastReceived` perf event, which `BroadcastListeners` emits when `MagicPerfHooks.sink` is set.
+
+## Rules for agents
+
+- Import only `package:magic_socket/magic_socket.dart`; the fakes come from `package:magic_socket/testing.dart` in tests.
+- Register `BroadcastServiceProvider` in `providers` and `() => broadcastingConfig` in `configFactories` (not `configs`: it reads `.env`). Neither is automatic.
+- Pass names without `private-` or `presence-`. `Echo.listen` is for public channels; use `Echo.private(name).listen(...)` for private ones.
+- Write idempotent handlers: the server can repeat a frame. Refetch on `onSubscriptionChanged` turning `true`, not on `Echo.onReconnect`.
+- `toOthers()` needs the `X-Socket-ID` header: connection other than `null`, a connected socket and `NetworkServiceProvider`.
+- `ListensToBroadcasts` replaces core's removed `make:controller --broadcasts`; a controller never mounted in a view calls `startListening()` itself.
+- In tests, call `MagicApp.reset()` and `Magic.flush()` in `setUp`, and `Echo.unfake()`, `BroadcastListeners.reset()` and `BroadcastManager.resetDrivers()` in `tearDown`: they are statics that `Magic.flush()` does not clear.
+- Assert `assertListening`, not only `assertSubscribed`; subscribing and listening are separate steps.
+
+## Docs
+
+- [Installation](https://anilcancakir.com/magic_socket/docs/getting-started/installation.md): install, requirements, registering the provider and config, a short check.
+- [Channels](https://anilcancakir.com/magic_socket/docs/basics/channels.md): public, private and presence channels, the event envelope, subscription state.
+- [Configuration](https://anilcancakir.com/magic_socket/docs/basics/configuration.md): connections, environment keys, Reverb options, the socket id header.
+- [Listeners](https://anilcancakir.com/magic_socket/docs/basics/listeners.md): `BroadcastListeners`, `ListensToBroadcasts`, `AuthChannelSubscription`.
+- [Connection](https://anilcancakir.com/magic_socket/docs/guides/connection.md): lifecycle, resubscription, auth failures, backoff, close codes, timeouts.
+- [Extending](https://anilcancakir.com/magic_socket/docs/guides/extending.md): interceptors and custom drivers.
+- [Testing](https://anilcancakir.com/magic_socket/docs/guides/testing.md): `Echo.fake`, assertions, `dispatch`, resetting statics.
+
+## Links
+
+- [README](https://github.com/anilcancakir/magic_socket/blob/master/README.md): install, `Echo`, drivers, the agent rules table.
+- [API reference](https://pub.dev/documentation/magic_socket/latest/): generated from the doc comments.
+- [Changelog](https://github.com/anilcancakir/magic_socket/blob/master/CHANGELOG.md): what changed in each version.
+- [Source](https://github.com/anilcancakir/magic_socket): issues and pull requests.

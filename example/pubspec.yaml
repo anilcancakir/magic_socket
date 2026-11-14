@@ -1,0 +1,20 @@
+name: magic_socket_example
+description: Subscribes to a channel through the null driver and lists the broadcast events a local button hands to the listener.
+publish_to: 'none'
+
+environment:
+  sdk: ">=3.13.0 <4.0.0"
+  flutter: ">=3.47.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  magic: ^0.1.0
+  magic_socket:
+    path: ../
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

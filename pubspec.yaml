@@ -1,0 +1,28 @@
+name: magic_socket
+description: "Real-time broadcasting for Magic apps: the Echo facade, Reverb and null drivers, private and presence channels."
+version: 0.0.1
+homepage: https://anilcancakir.com/magic_socket
+repository: https://github.com/anilcancakir/magic_socket
+issue_tracker: https://github.com/anilcancakir/magic_socket/issues
+
+topics:
+  - websocket
+  - realtime
+  - broadcasting
+  - magic
+
+environment:
+  sdk: ">=3.13.0 <4.0.0"
+  flutter: ">=3.47.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  magic: ^0.1.0
+  dowel: ^0.0.21
+  web_socket_channel: ^3.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

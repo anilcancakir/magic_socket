@@ -1,0 +1,65 @@
+name: Bug Report
+description: Report a bug in magic_socket
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A bug is easier to fix when it names the driver and
+        the call that was wrong: `Echo.connect`, `Echo.private`, `Echo.join` or `Echo.listen`.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What went wrong?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: |
+        For example:
+        1. Configure the Reverb driver and boot the app
+        2. Call `Echo.connect()`
+        3. Subscribe with `Echo.private('orders')`
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Android
+        - iOS
+        - macOS
+        - Windows
+        - Linux
+        - Web
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: magic_socket Version
+      placeholder: "0.0.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: flutter-doctor
+    attributes:
+      label: flutter doctor -v
+      render: shell

@@ -1,0 +1,36 @@
+# magic_socket install manifest (PluginInstaller DSL schema v1).
+#
+# Registers BroadcastServiceProvider and the `broadcastingConfig` factory.
+# Nothing is published: the factory reads every value from .env
+# (BROADCAST_CONNECTION, REVERB_*), so it is imported from this package's
+# barrel rather than copied into the consumer's lib/config/.
+
+plugin_name: magic_socket
+
+magic:
+  # Injects `import 'package:magic_socket/magic_socket.dart';` plus
+  # `(app) => BroadcastServiceProvider(app),` into the consumer's
+  # lib/config/app.dart providers list. Idempotent.
+  provider: BroadcastServiceProvider
+
+  # Injects `() => broadcastingConfig,` into lib/main.dart's configFactories,
+  # imported from the package barrel because no config is published.
+  config_factory: broadcastingConfig
+
+post_install:
+  message: |
+    Magic Socket installed. Next steps:
+
+    1. Run `flutter pub get`.
+
+    2. Set the connection in .env. `null` (the default) keeps the socket off:
+
+         BROADCAST_CONNECTION=reverb
+         REVERB_HOST=localhost
+         REVERB_PORT=8080
+         REVERB_SCHEME=ws
+         REVERB_APP_KEY=
+
+    3. Private and presence channels authorise through POST /broadcasting/auth
+       on your API, so add NetworkServiceProvider to send that request and the
+       X-Socket-ID header.
