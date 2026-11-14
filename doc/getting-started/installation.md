@@ -28,7 +28,7 @@ The barrel, `package:magic_socket/magic_socket.dart`, is the only runtime import
 |:------------|:------|
 | Dart | `>=3.13.0` |
 | Flutter | `>=3.47.0` |
-| Magic | `^0.1.0`, installed and bootstrapped (`lib/config/app.dart` exists) |
+| Magic | `^1.0.0`, installed and bootstrapped (`lib/config/app.dart` exists) |
 | Server | Laravel Reverb or any Pusher-protocol server; none for the `null` driver |
 | Dependencies | `web_socket_channel`, pulled in automatically |
 

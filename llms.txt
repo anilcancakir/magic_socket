@@ -2,7 +2,7 @@
 
 > Real-time broadcasting for Magic apps: the `Echo` facade subscribes to public, private and presence channels over a Reverb (Pusher protocol) websocket driver or a no-op `null` driver, `BroadcastServiceProvider` wires the manager and the `X-Socket-ID` header, and `Echo.fake` tests it all without a server.
 
-**Stack**: Flutter >=3.47.0 · Dart >=3.13.0 · Requires `magic` ^0.1.0 · Runtime deps: `magic`, `web_socket_channel`; dowel runs the installer. No mocking library.
+**Stack**: Flutter >=3.47.0 · Dart >=3.13.0 · Requires `magic` ^1.0.0 · Runtime deps: `magic`, `web_socket_channel`; dowel runs the installer. No mocking library.
 
 **Setup**:
 

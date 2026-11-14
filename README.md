@@ -32,7 +32,7 @@
 | Import | `package:magic_socket/magic_socket.dart`; tests add `package:magic_socket/testing.dart` |
 | Entry points | `Echo` (facade), `BroadcastServiceProvider` (wiring), `broadcastingConfig` (env-reading config factory), `ListensToBroadcasts` (controller mixin), `BroadcastListeners`, `AuthChannelSubscription` |
 | Platforms | Android, iOS, web, macOS, Windows and Linux |
-| Requires | Dart >=3.13, Flutter >=3.47, `magic` ^0.1.0, a Laravel Reverb or other Pusher-protocol server for the `reverb` connection |
+| Requires | Dart >=3.13, Flutter >=3.47, `magic` ^1.0.0, a Laravel Reverb or other Pusher-protocol server for the `reverb` connection |
 | Dependencies | `magic`, `web_socket_channel`; dowel runs the installer |
 | License | MIT |
 
