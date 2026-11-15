@@ -2,19 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.0.1] - 2026-11-15
 
 ### Changed
 
-- The package page is `https://anilcancakir.com/magic/socket` and the documentation links sit under `https://anilcancakir.com/magic/docs/socket` (the pub.dev page carries it from the next release).
-
-### Fixed
-
-- The documentation now says that `listen` compares its event name with the frame's event name exactly and resolves no namespace, unlike Echo JS. A Laravel event without `broadcastAs()` arrives as its full class name, so the samples now assume a `broadcastAs()` and the README and the Channels page show it and list the difference from Laravel Echo.
-- The documentation no longer claims that `Echo.fake` survives `Magic.flush()`: the fake lives in the container and the flush drops it; only the `BroadcastListeners` registry, the custom drivers and a `MagicPerfHooks.sink` a test sets are statics to reset.
-- The custom driver guide counts three obligations of the driver contract, not two.
-
-## [1.0.1] - 2026-11-15
+- The package page is `https://anilcancakir.com/magic/socket` and the documentation links sit under `https://anilcancakir.com/magic/docs/socket`.
+- An `AuthChannelSubscription` compares the channel it holds with the one `private(name)` returns by identity, so a custom `BroadcastDriver` must return the instance it already holds for a registered name; a driver that mints a new channel on every call makes each `sync` register the channel again and fire `onReconnect` once the new channel is confirmed. The custom driver guide lists this obligation.
 
 ### Fixed
 
@@ -24,6 +17,9 @@ All notable changes to this project will be documented in this file.
 - A websocket error on the Reverb driver reaches each interceptor's `onError` once; it used to run twice for one error.
 - A `BroadcastInterceptor` whose `onSend` returns an empty map now suppresses the frame, and a `BroadcastEvent` returned from `onError` now reaches the listeners of its channel, as the contract promised.
 - A websocket frame that is not JSON, or a handshake with a missing or non-string field, no longer escapes as an uncaught error: it is logged as a warning, passed to the interceptors' `onError`, and the connection keeps delivering events. An error thrown by an interceptor's `onReceive`, `onSend` or `onError` still reaches the app's zone, and `onError` runs once per error.
+- The documentation now says that `listen` compares its event name with the frame's event name exactly and resolves no namespace, unlike Echo JS. A Laravel event without `broadcastAs()` arrives as its full class name, so the samples now assume a `broadcastAs()` and the README and the Channels page show it and list the difference from Laravel Echo.
+- The documentation no longer claims that `Echo.fake` survives `Magic.flush()`: the fake lives in the container and the flush drops it; only the `BroadcastListeners` registry, the custom drivers and a `MagicPerfHooks.sink` a test sets are statics to reset.
+- The custom driver guide counts three obligations of the driver contract, not two.
 
 ## [1.0.0] - 2026-11-14
 
