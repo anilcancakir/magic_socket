@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-11-18
+
 ### Fixed
 
 - A blank `REVERB_SCHEME` made `Uri.parse` throw before any retry was armed, which left the Reverb driver in `connecting` for good; a blank `REVERB_APP_KEY` built `/app/?protocol=7`, which the server rejected, and the driver retried it for ever with a `Reconnect failed` log that named nothing; a blank `REVERB_HOST` built `ws://:8080/...` and entered the same retry loop.

@@ -4,7 +4,7 @@
 
 Real-time broadcasting for the Magic Framework: the `Echo` facade, `BroadcastManager`, the Reverb (Pusher protocol websocket) and null drivers, private and presence channels, `BroadcastServiceProvider` with the `broadcastingConfig` factory, `SocketIdInterceptor`, the `ListensToBroadcasts` mixin over `BroadcastListeners` and `AuthChannelSubscription`, and the `Echo.fake` test double.
 
-**Version:** 1.0.1 · **Dart:** >=3.13.0 · **Flutter:** >=3.47.0 · **Requires:** `magic` ^1.0.0
+**Version:** 1.0.2 · **Dart:** >=3.13.0 · **Flutter:** >=3.47.0 · **Requires:** `magic` ^1.0.0
 
 ## Commands
 
