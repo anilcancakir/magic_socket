@@ -1,7 +1,7 @@
 ---
 name: magic-socket
 description: "Wire real-time broadcasts into a Magic app with the Echo facade, Reverb and null drivers, and Echo.fake tests."
-version: 1.0.1
+version: 1.0.2
 when_to_use: "Use when code imports package:magic_socket or touches Echo, BroadcastServiceProvider, ListensToBroadcasts or X-Socket-ID."
 ---
 
