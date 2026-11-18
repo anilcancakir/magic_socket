@@ -3205,7 +3205,9 @@ void main() {
     test(
       'a driver with no bound log service still reports the error',
       () async {
-        // `setUp` flushed the container, so there is no `log` binding here.
+        // `setUp` faked the log; drop that binding so the driver finds none.
+        Magic.flush();
+        expect(Magic.bound('log'), isFalse);
         final (driver, uris) = createDriver({'app_key': ''});
         final states = <BroadcastConnectionState>[];
         driver.connectionState.listen(states.add);
