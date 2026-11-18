@@ -385,11 +385,19 @@ class ReverbBroadcastDriver implements BroadcastDriver {
         '$scheme://$host:$port/app/$appKey'
         '?protocol=7&client=dart&version=1.0.0',
       );
+      // `Uri.parse` also accepts a relative reference (`REVERB_SCHEME=ws/x`)
+      // and any scheme; a WebSocket needs `ws` or `wss` and a host.
+      if ((uri.scheme != 'ws' && uri.scheme != 'wss') || uri.host.isEmpty) {
+        throw FormatException(
+          'expected a ws or wss URL with a host, got "${uri.scheme}" and '
+          '"${uri.host}"',
+        );
+      }
     } on FormatException catch (error) {
       _failConfiguration(
         'Broadcasting is not configured: the connection URL is malformed '
-        '(${error.message}). Check REVERB_SCHEME and REVERB_HOST in .env and '
-        'restart the app; the Reverb driver does not retry a configuration '
+        '(${error.message}). Check REVERB_SCHEME and REVERB_HOST in .env, or the '
+        'config that overrides them, and restart the app; the Reverb driver does not retry a configuration '
         'error.',
       );
     }
@@ -483,13 +491,17 @@ class ReverbBroadcastDriver implements BroadcastDriver {
   /// rejects. Nothing is retried, since the next attempt would read the same
   /// config.
   Never _failConfiguration(String message) {
-    if (!_configErrorLogged) {
-      _configErrorLogged = true;
-      Log.error(message);
-    }
     _connectionStateController.add(BroadcastConnectionState.disconnected);
 
-    throw StateError(message);
+    // Best effort: a driver built without a bound `log` service still reports
+    // `disconnected` and rejects with the configuration error, rather than a
+    // logger lookup failure.
+    if (!_configErrorLogged && Magic.bound('log')) {
+      Log.error(message);
+      _configErrorLogged = true;
+    }
+
+    throw _ConfigurationError(message);
   }
 
   @override
@@ -1099,7 +1111,9 @@ class ReverbBroadcastDriver implements BroadcastDriver {
       await _replay;
     } catch (error) {
       _routeError(error);
-      Log.error('Reconnect failed', error);
+      // A configuration error was named when it was found; a second, generic
+      // line for it would only repeat that.
+      if (error is! _ConfigurationError) Log.error('Reconnect failed', error);
       rethrow;
     }
   }
@@ -1334,4 +1348,17 @@ class ReverbBroadcastPresenceChannel extends ReverbBroadcastChannel
     _onLeaveController.close();
     super.dispose();
   }
+}
+
+/// The error [ReverbBroadcastDriver] raises for a configuration no retry can
+/// heal. A [StateError] to every caller; the type lets the reconnect path tell
+/// it from a transport failure and skip a second, generic log line.
+final class _ConfigurationError extends Error implements StateError {
+  _ConfigurationError(this.message);
+
+  @override
+  final String message;
+
+  @override
+  String toString() => 'Bad state: $message';
 }

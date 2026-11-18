@@ -101,7 +101,7 @@ Register `myBroadcastingConfig` in `configFactories` instead of `() => broadcast
 | `register()` | Binds the `BroadcastManager` singleton at `broadcasting`. |
 | `boot()` | Skips everything when `broadcasting.default` is `null`. Otherwise adds `SocketIdInterceptor` to the network driver (when one is bound) and starts connecting without waiting. |
 
-Boot does not wait for the socket. A server that is down or slow never holds or fails the app launch: the failure is logged with `Log.warning` and the driver keeps retrying. A blank app key (or a blank host or scheme in a custom connection config) is a configuration error instead: the driver logs one error naming the variable (`REVERB_SCHEME`, `REVERB_HOST` or `REVERB_APP_KEY`), opens no socket, reports `disconnected` and does not retry, so fix `.env` and restart the app. Code that needs the socket awaits `Echo.connect()`, which joins the attempt already in flight and throws a `StateError` for a configuration error.
+Boot does not wait for the socket. A server that is down or slow never holds or fails the app launch: the failure is logged with `Log.warning` and, while `reconnect` is on, the driver keeps retrying. A blank app key (or a blank host or scheme in a custom connection config) is a configuration error instead: the driver logs one error naming the variable (`REVERB_SCHEME`, `REVERB_HOST` or `REVERB_APP_KEY`), opens no socket, reports `disconnected` and does not retry, so fix `.env` (or the connection config that overrides it) and restart the app. Code that needs the socket awaits `Echo.connect()`, which joins the attempt already in flight and throws a `StateError` for a configuration error.
 
 <a name="excluding-the-sender"></a>
 ## Excluding the Sender

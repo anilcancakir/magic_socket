@@ -3122,6 +3122,8 @@ void main() {
     const malformedCases = <String, Map<String, dynamic>>{
       'a host with an unclosed bracket': {'host': '[::1'},
       'a scheme starting with a digit': {'scheme': '1ws'},
+      'a scheme that makes a relative reference': {'scheme': 'ws/extra'},
+      'a scheme the socket cannot speak': {'scheme': 'https'},
     };
 
     const allVariables = ['REVERB_SCHEME', 'REVERB_HOST', 'REVERB_APP_KEY'];
@@ -3199,6 +3201,30 @@ void main() {
         expect(errors.single.message, contains('REVERB_SCHEME'));
       });
     }
+
+    test(
+      'a driver with no bound log service still reports the error',
+      () async {
+        // `setUp` flushed the container, so there is no `log` binding here.
+        final (driver, uris) = createDriver({'app_key': ''});
+        final states = <BroadcastConnectionState>[];
+        driver.connectionState.listen(states.add);
+
+        await expectLater(
+          driver.connect(),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              contains('REVERB_APP_KEY'),
+            ),
+          ),
+        );
+
+        expect(uris, isEmpty);
+        expect(states, [BroadcastConnectionState.disconnected]);
+      },
+    );
 
     test('a second connect() still fails but does not log again', () async {
       final fakeLog = Log.fake();
