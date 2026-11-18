@@ -58,8 +58,9 @@ class BroadcastServiceProvider extends ServiceProvider {
   /// wait for the socket, so a server that refused it failed every provider
   /// after this one and the app never drew a frame, and a server that never
   /// answered held the app at launch for the whole connection timeout. A
-  /// realtime socket is an enhancement over a working app: the driver keeps
-  /// retrying on its own, and a caller that needs the connection awaits
+  /// realtime socket is an enhancement over a working app: the driver retries
+  /// a connection failure on its own (a configuration error it logs and does
+  /// not retry), and a caller that needs the connection awaits
   /// `Echo.connect()`, which joins the attempt in flight.
   @override
   Future<void> boot() async {
@@ -78,8 +79,8 @@ class BroadcastServiceProvider extends ServiceProvider {
     unawaited(
       manager.connection().connect().catchError((Object error) {
         Log.warning(
-          'Broadcasting could not connect at boot ($error); the driver '
-          'keeps retrying.',
+          'Broadcasting could not connect at boot ($error). The driver '
+          'retries a connection failure, but not a configuration error.',
         );
       }),
     );

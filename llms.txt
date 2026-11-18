@@ -24,14 +24,14 @@ void main() {
 }
 ```
 
-`.env`: `BROADCAST_CONNECTION` (default `null`), `REVERB_HOST` (`localhost`), `REVERB_PORT` (`8080`), `REVERB_SCHEME` (`ws`), `REVERB_APP_KEY` (empty).
+`.env`: `BROADCAST_CONNECTION` (default `null`), `REVERB_HOST` (`localhost`), `REVERB_PORT` (`8080`), `REVERB_SCHEME` (`ws`), `REVERB_APP_KEY` (empty). A blank host or scheme takes its default; a blank app key is a configuration error: logged once by variable name, no socket, no retry.
 
 ## API
 
 - `Echo` (facade, all static): `channel(name)` and `private(name)` return `BroadcastChannel`; `join(name)` returns `BroadcastPresenceChannel`; `listen(channel, event, callback)` is a public-channel shorthand; `leave(name)` (also leaves the `private-` and `presence-` forms of `name`); `connect()`, `disconnect()`; `socketId`, `connectionState`, `onReconnect`, `connection`, `manager`; `addInterceptor(interceptor)`; `fake()` and `unfake()`.
 - `BroadcastChannel`: `name`, `events`, `isSubscribed`, `onSubscriptionChanged`, `listen(event, callback)` (chainable; a second call for one event replaces the first), `stopListening(event)`. `BroadcastPresenceChannel` adds `members`, `onJoin`, `onLeave`.
 - `BroadcastEvent`: `event`, `channel`, `data` (decoded map), `receivedAt`. `BroadcastConnectionState`: `connecting`, `connected`, `disconnected`, `reconnecting`.
-- Drivers: `ReverbBroadcastDriver` (reconnect with backoff and jitter, activity ping, resubscribe on every handshake, `BroadcastAuthException` on a refused auth) and `NullBroadcastDriver`. `BroadcastManager.extend(name, factory)` registers a custom `BroadcastDriver`; `BroadcastInterceptor` hooks `onSend`, `onReceive`, `onError`.
+- Drivers: `ReverbBroadcastDriver` (reconnect with backoff and jitter, no retry for a blank app key, or a blank host or scheme in a custom config, activity ping, resubscribe on every handshake, `BroadcastAuthException` on a refused auth) and `NullBroadcastDriver`. `BroadcastManager.extend(name, factory)` registers a custom `BroadcastDriver`; `BroadcastInterceptor` hooks `onSend`, `onReceive`, `onError`.
 - `BroadcastServiceProvider`: `register()` binds the manager at `broadcasting`; `boot()` starts the default connection without waiting (skipped for `null`) and adds `SocketIdInterceptor` when a network driver is bound.
 - `broadcastingConfig`: env-reading config getter, registered through `configFactories`. Reverb keys: `host`, `port`, `scheme`, `app_key`, `auth_endpoint` (`/broadcasting/auth`), `reconnect`, `max_reconnect_delay` (30000 ms), `activity_timeout` (120 s), `connection_timeout` (15 s).
 - `ListensToBroadcasts` (mixin on `MagicController`): `listeners` keyed `'<alias>:<event>'`, `startListening()`. `BroadcastListeners`: `channel(alias, name, {onReconnect})`, `sync()`, `add`, `remove`. `AuthChannelSubscription`: one auth-scoped private channel kept in sync by `sync()`.

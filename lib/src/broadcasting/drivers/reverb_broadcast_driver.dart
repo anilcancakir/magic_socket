@@ -235,6 +235,11 @@ class ReverbBroadcastDriver implements BroadcastDriver {
   /// can tell it was cancelled and stop before touching a socket.
   int _epoch = 0;
 
+  /// Whether a configuration error was already logged, so an app that calls
+  /// [connect] again does not repeat it. A completed handshake clears it: the
+  /// next configuration error is a new one.
+  bool _configErrorLogged = false;
+
   // ---------------------------------------------------------------------------
   // Activity monitor
   // ---------------------------------------------------------------------------
@@ -297,6 +302,9 @@ class ReverbBroadcastDriver implements BroadcastDriver {
   ///   `connection_timeout` seconds; a retry is armed before the throw.
   /// @throws StateError when the server closes the socket before the
   ///   handshake.
+  /// @throws StateError when the scheme, host or app key is blank, or the
+  ///   URL they form is malformed. The error is logged once per driver, the
+  ///   state is `disconnected` and no retry is armed.
   @override
   Future<void> connect() {
     if (_isConnected) return Future<void>.value();
@@ -349,6 +357,19 @@ class ReverbBroadcastDriver implements BroadcastDriver {
   /// without opening anything when [disconnect] runs while this is suspended.
   Future<void> _openSocket() async {
     final epoch = _epoch;
+
+    // 1. A configuration no retry can heal ends the attempt before any state
+    // or socket exists, the way a fatal close ends one.
+    final blank = _blankSettings();
+    if (blank.isNotEmpty) {
+      _failConfiguration(
+        'Broadcasting is not configured: ${blank.join(', ')} '
+        '${blank.length == 1 ? 'is' : 'are'} blank. Set '
+        '${blank.length == 1 ? 'it' : 'them'} in .env and restart the app; '
+        'the Reverb driver does not retry a configuration error.',
+      );
+    }
+
     _connectionStateController.add(BroadcastConnectionState.connecting);
 
     final host = _config['host'] as String;
@@ -356,16 +377,32 @@ class ReverbBroadcastDriver implements BroadcastDriver {
     final scheme = _config['scheme'] as String;
     final appKey = _config['app_key'] as String;
 
-    final uri = Uri.parse(
-      '$scheme://$host:$port/app/$appKey'
-      '?protocol=7&client=dart&version=1.0.0',
-    );
-
-    final channel = _channelFactory(uri);
-    final generation = ++_generation;
-    _channel = channel;
+    // 2. A scheme or host that is not merely blank but malformed fails the
+    // same way: retrying cannot make it parse.
+    final Uri uri;
     try {
-      await channel.ready;
+      uri = Uri.parse(
+        '$scheme://$host:$port/app/$appKey'
+        '?protocol=7&client=dart&version=1.0.0',
+      );
+    } on FormatException catch (error) {
+      _failConfiguration(
+        'Broadcasting is not configured: the connection URL is malformed '
+        '(${error.message}). Check REVERB_SCHEME and REVERB_HOST in .env and '
+        'restart the app; the Reverb driver does not retry a configuration '
+        'error.',
+      );
+    }
+
+    // 3. Open the socket. The factory sits inside the try: a synchronous
+    // throw (a platform that rejects the URL before any handshake) arms the
+    // same retry a refused socket does.
+    final generation = ++_generation;
+    WebSocketChannel? opening;
+    try {
+      opening = _channelFactory(uri);
+      _channel = opening;
+      await opening.ready;
     } catch (_) {
       // A refused socket (the server is down) fails here, before any
       // handshake, which is the one failure the timeout below never sees.
@@ -377,11 +414,14 @@ class ReverbBroadcastDriver implements BroadcastDriver {
       // browser socket that never opened never finishes closing, so the next
       // attempt waited on it forever and no retry ever opened a socket
       // (measured in a host app's web walk).
-      if (identical(_channel, channel)) _channel = null;
-      channel.sink.close().ignore();
+      if (opening != null) {
+        if (identical(_channel, opening)) _channel = null;
+        opening.sink.close().ignore();
+      }
       if (epoch == _epoch) _scheduleReconnect();
       rethrow;
     }
+    final channel = opening;
     // disconnect() already closed this socket; a later connect() may own
     // `_channel` by now, so leave every field alone.
     if (epoch != _epoch) return;
@@ -421,6 +461,35 @@ class ReverbBroadcastDriver implements BroadcastDriver {
         );
       },
     );
+  }
+
+  /// The `.env` variables behind the blank connection settings, in the order
+  /// the URL reads them. Empty when the scheme, host and app key are all set.
+  List<String> _blankSettings() {
+    const settings = <String, String>{
+      'scheme': 'REVERB_SCHEME',
+      'host': 'REVERB_HOST',
+      'app_key': 'REVERB_APP_KEY',
+    };
+
+    return <String>[
+      for (final MapEntry(:key, :value) in settings.entries)
+        if (((_config[key] as String?) ?? '').trim().isEmpty) value,
+    ];
+  }
+
+  /// Ends the attempt for a configuration error: logs it once per driver,
+  /// reports `disconnected` as a fatal close does, and throws so [connect]
+  /// rejects. Nothing is retried, since the next attempt would read the same
+  /// config.
+  Never _failConfiguration(String message) {
+    if (!_configErrorLogged) {
+      _configErrorLogged = true;
+      Log.error(message);
+    }
+    _connectionStateController.add(BroadcastConnectionState.disconnected);
+
+    throw StateError(message);
   }
 
   @override
@@ -645,6 +714,7 @@ class ReverbBroadcastDriver implements BroadcastDriver {
     activityTimeout = timeout;
     _isConnected = true;
     _attempt = 0;
+    _configErrorLogged = false;
 
     _resetActivityTimer();
 

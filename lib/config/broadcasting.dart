@@ -10,8 +10,11 @@ import 'package:magic/magic.dart';
 ///
 /// ## Reverb options
 ///
-/// - `host` / `port` / `scheme`: WebSocket endpoint coordinates
-/// - `app_key`: Reverb application key (matches the server config)
+/// - `host` / `port` / `scheme`: WebSocket endpoint coordinates; a blank
+///   `REVERB_HOST` or `REVERB_SCHEME` takes its fallback (`localhost`, `ws`)
+/// - `app_key`: Reverb application key (matches the server config); a blank
+///   `REVERB_APP_KEY` is a configuration error the driver reports without
+///   connecting
 /// - `auth_endpoint`: HTTP endpoint for private and presence channel auth
 /// - `reconnect`: reconnect on an unexpected disconnect
 /// - `max_reconnect_delay`: maximum back-off delay in milliseconds
@@ -23,9 +26,9 @@ Map<String, dynamic> get broadcastingConfig => {
     'connections': {
       'reverb': {
         'driver': 'reverb',
-        'host': env('REVERB_HOST', 'localhost'),
+        'host': Env.filled('REVERB_HOST', 'localhost'),
         'port': int.tryParse(env('REVERB_PORT', '8080')) ?? 8080,
-        'scheme': env('REVERB_SCHEME', 'ws'),
+        'scheme': Env.filled('REVERB_SCHEME', 'ws'),
         'app_key': env('REVERB_APP_KEY', ''),
         'auth_endpoint': '/broadcasting/auth',
         'reconnect': true,
