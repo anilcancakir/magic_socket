@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- A blank `REVERB_SCHEME` made `Uri.parse` throw before any retry was armed, which left the Reverb driver in `connecting` for good; a blank `REVERB_APP_KEY` built `/app/?protocol=7`, which the server rejected, and the driver retried it for ever with a `Reconnect failed` log that named nothing; a blank `REVERB_HOST` built `ws://:8080/...` and entered the same retry loop.
+- `lib/config/broadcasting.dart` reads `REVERB_HOST` and `REVERB_SCHEME` with `Env.filled`, so a blank value takes the fallback (`localhost`, `ws`) as an absent one does.
+- `ReverbBroadcastDriver` checks the scheme, host and app key before it connects. A blank one, a URL that does not parse, a scheme other than `ws` or `wss` and a URL without a host are logged once per driver as an error naming `REVERB_SCHEME`, `REVERB_HOST` or `REVERB_APP_KEY`; no socket is opened, no retry is armed, the state is `disconnected` and `connect()` throws a `StateError`. A channel factory that throws synchronously takes the retry path.
+- The boot warning and the `AuthChannelSubscription` connect warning no longer claim the driver retries when the failure is a configuration error, or when `reconnect` is off. The reconnect path skips its generic `Reconnect failed` line for a configuration error, which was named already.
+
 ## [1.0.1] - 2026-11-15
 
 ### Changed

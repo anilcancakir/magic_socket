@@ -53,7 +53,7 @@ REVERB_SCHEME=ws
 REVERB_APP_KEY=
 ```
 
-`BROADCAST_CONNECTION` defaults to `null`, which keeps the socket off.
+`BROADCAST_CONNECTION` defaults to `null`, which keeps the socket off. A blank `REVERB_HOST` or `REVERB_SCHEME` falls back to `localhost` or `ws`; a blank `REVERB_APP_KEY` is logged once as a configuration error and the driver does not connect or retry.
 
 ## Echo
 

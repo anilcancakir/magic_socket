@@ -28,7 +28,7 @@ REVERB_SCHEME=ws
 REVERB_APP_KEY=
 ```
 
-`BROADCAST_CONNECTION` defaults to `null`. Private and presence auth is `POST /broadcasting/auth` through `Http`, and `X-Socket-ID` needs a network driver, so the app lists `NetworkServiceProvider`.
+`BROADCAST_CONNECTION` defaults to `null`. A blank `REVERB_HOST` or `REVERB_SCHEME` takes its default (`localhost`, `ws`); a blank `REVERB_APP_KEY` is logged once as an error naming it, and the driver opens no socket and does not retry. Private and presence auth is `POST /broadcasting/auth` through `Http`, and `X-Socket-ID` needs a network driver, so the app lists `NetworkServiceProvider`.
 
 ## Channel rules
 
@@ -37,7 +37,7 @@ REVERB_APP_KEY=
 3. A second `listen` for one event on one channel replaces the first. Two controllers wanting one event use `BroadcastListeners`, not two `listen` calls.
 4. Handlers must be idempotent: the server can repeat a frame, including a retried queued job.
 5. Refetch missed data when `channel.onSubscriptionChanged` turns `true`. `Echo.onReconnect` fires after the subscribe was sent, before the server confirms it.
-6. `Echo.connect()` is idempotent and joins an attempt in flight. Boot does not wait for the socket, so read `Echo.socketId` only after awaiting `Echo.connect()`.
+6. `Echo.connect()` is idempotent and joins an attempt in flight. Boot does not wait for the socket, so read `Echo.socketId` only after awaiting `Echo.connect()`. A configuration error (a blank app key, or a blank host or scheme in a custom config) makes it throw a `StateError` and is never retried.
 7. A 401 or 403 on the auth route is logged and not retried; a missing response or a 5xx is retried with backoff (`BroadcastAuthException.isRetryable`).
 
 ## Config rules

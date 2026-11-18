@@ -51,10 +51,10 @@ A connection with an unknown `driver` name falls back to the null driver. Regist
 | Key | Default | Feeds |
 |:----|:--------|:------|
 | `BROADCAST_CONNECTION` | `null` | `broadcasting.default` |
-| `REVERB_HOST` | `localhost` | `host` |
+| `REVERB_HOST` | `localhost` | `host`; a blank value falls back to `localhost` |
 | `REVERB_PORT` | `8080` | `port`; a non-numeric value falls back to `8080` |
-| `REVERB_SCHEME` | `ws` | `scheme`; use `wss` behind TLS |
-| `REVERB_APP_KEY` | empty | `app_key` |
+| `REVERB_SCHEME` | `ws` | `scheme`; use `wss` behind TLS; a blank value falls back to `ws` |
+| `REVERB_APP_KEY` | empty | `app_key`; required, a blank value is a configuration error, see [The Provider](#the-provider) |
 
 <a name="reverb-options"></a>
 ## Reverb Options
@@ -101,7 +101,7 @@ Register `myBroadcastingConfig` in `configFactories` instead of `() => broadcast
 | `register()` | Binds the `BroadcastManager` singleton at `broadcasting`. |
 | `boot()` | Skips everything when `broadcasting.default` is `null`. Otherwise adds `SocketIdInterceptor` to the network driver (when one is bound) and starts connecting without waiting. |
 
-Boot does not wait for the socket. A server that is down or slow never holds or fails the app launch: the failure is logged with `Log.warning` and the driver keeps retrying. Code that needs the socket awaits `Echo.connect()`, which joins the attempt already in flight.
+Boot does not wait for the socket. A server that is down or slow never holds or fails the app launch: the failure is logged with `Log.warning` and, while `reconnect` is on, the driver keeps retrying. A blank app key (or a blank host or scheme in a custom connection config) is a configuration error instead: the driver logs one error naming the variable (`REVERB_SCHEME`, `REVERB_HOST` or `REVERB_APP_KEY`), opens no socket, reports `disconnected` and does not retry, so fix `.env` (or the connection config that overrides it) and restart the app. Code that needs the socket awaits `Echo.connect()`, which joins the attempt already in flight and throws a `StateError` for a configuration error.
 
 <a name="excluding-the-sender"></a>
 ## Excluding the Sender
@@ -126,7 +126,7 @@ Laravel's `broadcast($event)->toOthers()` skips the socket that made the request
 | Mistake | Fix |
 |:--------|:----|
 | Putting `broadcastingConfig` in `configs` | It reads `.env`; register it in `configFactories` so it runs after `.env` loads. |
-| Forgetting `REVERB_APP_KEY` | The handshake is refused; the key must equal the server's `REVERB_APP_KEY`. |
+| Forgetting `REVERB_APP_KEY` | A blank key is logged once as an error naming `REVERB_APP_KEY` and the driver does not connect or retry; set it, equal to the server's `REVERB_APP_KEY`, and restart. |
 | Using `ws` against a TLS endpoint | Set `REVERB_SCHEME=wss`. |
 | Expecting `Echo.socketId` right after `Magic.init` | Boot does not wait; await `Echo.connect()` first. |
 | `toOthers()` has no effect | The request had no `X-Socket-ID`: connection `null`, socket down, or no `NetworkServiceProvider`. |

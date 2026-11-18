@@ -241,15 +241,18 @@ class AuthChannelSubscription {
   /// Asks the default connection to connect, logging a failure instead of
   /// propagating it.
   ///
-  /// A failed connect is not a failed subscription: the driver retries on its
-  /// own and subscribes every channel it holds when it gets through.
+  /// A failed connect is not a failed subscription: the channel stays pending
+  /// and the driver subscribes every channel it holds at its next handshake,
+  /// if there is one. A transport failure is retried while `reconnect` is on,
+  /// unless the server closes the socket with a fatal code (4000 to 4099); a
+  /// configuration error is never retried and needs the config fixed first.
   Future<void> _connectOrLog(String name) async {
     try {
       await Echo.connect();
     } catch (error) {
       Log.warning(
-        '[AuthChannelSubscription] connect failed, "$name" subscribes on the '
-        "driver's next handshake: $error",
+        '[AuthChannelSubscription] connect failed, "$name" stays pending until '
+        'a connection succeeds: $error',
       );
     }
   }

@@ -8,6 +8,7 @@ How the Reverb driver connects, reconnects, authorises channels and detects a de
 - [Auth Failures](#auth-failures)
 - [Reconnect Backoff](#reconnect-backoff)
 - [Close Codes](#close-codes)
+- [Configuration Errors](#configuration-errors)
 - [Activity Monitor](#activity-monitor)
 - [Connection Timeout](#connection-timeout)
 - [Perf Events](#perf-events)
@@ -16,7 +17,7 @@ How the Reverb driver connects, reconnects, authorises channels and detects a de
 <a name="lifecycle"></a>
 ## Lifecycle
 
-`BroadcastServiceProvider.boot()` starts the default connection and does not wait for it, so a server that is down never fails the app launch. The failure is logged as a warning and the driver keeps retrying. Code that needs the socket awaits `Echo.connect()`, which is idempotent: it returns at once when connected, joins an attempt already in flight, and when a retry is armed it cancels the timer and reconnects now. It never opens a second socket.
+`BroadcastServiceProvider.boot()` starts the default connection and does not wait for it, so a server that is down never fails the app launch. The failure is logged as a warning and the driver keeps retrying, unless it is a configuration error (see [Configuration Errors](#configuration-errors)). Code that needs the socket awaits `Echo.connect()`, which is idempotent: it returns at once when connected, joins an attempt already in flight, and when a retry is armed it cancels the timer and reconnects now. It never opens a second socket.
 
 ```dart
 import 'package:magic_socket/magic_socket.dart';
@@ -38,7 +39,7 @@ Future<void> main() async {
 |:------|:--------|
 | `connecting` | Establishing the connection. |
 | `connected` | Active and healthy. |
-| `disconnected` | Not connected and not retrying. |
+| `disconnected` | Not connected and not retrying: a fatal close code, `reconnect` off, or a configuration error. |
 | `reconnecting` | Lost the connection and re-establishing it. |
 
 ```dart
@@ -113,6 +114,11 @@ The websocket close code decides the strategy, following the Pusher protocol.
 | Any other, or none | Reconnect with backoff. |
 
 A close without a code is the common case: a restarting Reverb drops connections without a close frame. A `pusher:error` frame on an open socket never reconnects; it only reaches the interceptor `onError` chain, because Reverb sends one for any server-side exception and keeps the socket open.
+
+<a name="configuration-errors"></a>
+## Configuration Errors
+
+A blank scheme, host or app key cannot heal by retrying, so the driver checks them before it opens anything. On a miss it logs one error naming each blank variable (`REVERB_SCHEME`, `REVERB_HOST`, `REVERB_APP_KEY`), opens no socket, arms no retry, reports `disconnected` and rejects `Echo.connect()` with a `StateError`. A scheme or host that does not parse (for example an unclosed `[` in the host), a scheme other than `ws` or `wss`, and a URL without a host end the same way and name `REVERB_SCHEME` and `REVERB_HOST`. A host such as `example.com/path` still parses, so it is not caught: the driver connects to `example.com` and the server answers. The error is logged once per driver, however many times `Echo.connect()` is called; fix `.env` (or the connection config that overrides it) and restart the app. `broadcastingConfig` already turns a blank `REVERB_HOST` into `localhost` and a blank `REVERB_SCHEME` into `ws`, so in practice a blank `REVERB_APP_KEY` is the case you meet.
 
 <a name="activity-monitor"></a>
 ## Activity Monitor

@@ -3102,6 +3102,198 @@ void main() {
       await driver.disconnect();
     });
   });
+
+  group('ReverbBroadcastDriver: invalid connection config', () {
+    // A blank scheme made Uri.parse throw before the retry could arm, which
+    // left the driver in `connecting`; a blank app key or host was rejected by
+    // the server and retried for ever without naming the variable. None of
+    // them can heal by retrying, so the driver stops and says which to fix.
+    const blankCases = <String, (Map<String, dynamic>, List<String>)>{
+      'a blank scheme': ({'scheme': ''}, ['REVERB_SCHEME']),
+      'a blank host': ({'host': ''}, ['REVERB_HOST']),
+      'a blank app key': ({'app_key': ''}, ['REVERB_APP_KEY']),
+      'a whitespace-only app key': ({'app_key': '  '}, ['REVERB_APP_KEY']),
+      'a blank scheme, host and app key': (
+        {'scheme': '', 'host': '', 'app_key': ''},
+        ['REVERB_SCHEME', 'REVERB_HOST', 'REVERB_APP_KEY'],
+      ),
+    };
+
+    const malformedCases = <String, Map<String, dynamic>>{
+      'a host with an unclosed bracket': {'host': '[::1'},
+      'a scheme starting with a digit': {'scheme': '1ws'},
+      'a scheme that makes a relative reference': {'scheme': 'ws/extra'},
+      'a scheme the socket cannot speak': {'scheme': 'https'},
+    };
+
+    const allVariables = ['REVERB_SCHEME', 'REVERB_HOST', 'REVERB_APP_KEY'];
+
+    (ReverbBroadcastDriver, List<Uri>) createDriver(
+      Map<String, dynamic> overrides,
+    ) {
+      final uris = <Uri>[];
+      final driver = ReverbBroadcastDriver(
+        _defaultConfig(overrides: {'reconnect': true, ...overrides}),
+        channelFactory: (uri) {
+          uris.add(uri);
+          return _MockWebSocketChannel();
+        },
+        random: Random(42),
+      );
+      addTearDown(driver.disconnect);
+      return (driver, uris);
+    }
+
+    Iterable<FakeLogEntry> errorsOf(FakeLogManager fakeLog) =>
+        fakeLog.entries.where((e) => e.level == 'error');
+
+    for (final entry in blankCases.entries) {
+      final (overrides, named) = entry.value;
+
+      test('${entry.key} opens no socket, logs one error naming '
+          '${named.join(', ')} and never retries', () async {
+        final fakeLog = Log.fake();
+        final (driver, uris) = createDriver(overrides);
+        final states = <BroadcastConnectionState>[];
+        driver.connectionState.listen(states.add);
+
+        await expectLater(driver.connect(), throwsStateError);
+        // Past the first backoff delay (500ms plus jitter).
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+
+        expect(uris, isEmpty);
+        expect(driver.isConnected, isFalse);
+        expect(states, [BroadcastConnectionState.disconnected]);
+
+        final errors = errorsOf(fakeLog).toList();
+        expect(errors, hasLength(1));
+        for (final variable in allVariables) {
+          expect(
+            errors.single.message.contains(variable),
+            named.contains(variable),
+            reason: variable,
+          );
+        }
+      });
+    }
+
+    for (final entry in malformedCases.entries) {
+      test('${entry.key} ends the attempt instead of leaving connecting, '
+          'logs once and never retries', () async {
+        final fakeLog = Log.fake();
+        final (driver, uris) = createDriver(entry.value);
+        final states = <BroadcastConnectionState>[];
+        driver.connectionState.listen(states.add);
+
+        await expectLater(driver.connect(), throwsStateError);
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+
+        expect(uris, isEmpty);
+        // The attempt starts, as one that a fatal close ends does.
+        expect(states, [
+          BroadcastConnectionState.connecting,
+          BroadcastConnectionState.disconnected,
+        ]);
+
+        final errors = errorsOf(fakeLog).toList();
+        expect(errors, hasLength(1));
+        expect(errors.single.message, contains('REVERB_HOST'));
+        expect(errors.single.message, contains('REVERB_SCHEME'));
+      });
+    }
+
+    test(
+      'a driver with no bound log service still reports the error',
+      () async {
+        // `setUp` faked the log; drop that binding so the driver finds none.
+        Magic.flush();
+        expect(Magic.bound('log'), isFalse);
+        final (driver, uris) = createDriver({'app_key': ''});
+        final states = <BroadcastConnectionState>[];
+        driver.connectionState.listen(states.add);
+
+        await expectLater(
+          driver.connect(),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              contains('REVERB_APP_KEY'),
+            ),
+          ),
+        );
+
+        expect(uris, isEmpty);
+        expect(states, [BroadcastConnectionState.disconnected]);
+      },
+    );
+
+    test('a second connect() still fails but does not log again', () async {
+      final fakeLog = Log.fake();
+      final (driver, uris) = createDriver({'app_key': ''});
+
+      await expectLater(driver.connect(), throwsStateError);
+      await expectLater(driver.connect(), throwsStateError);
+
+      expect(uris, isEmpty);
+      expect(errorsOf(fakeLog), hasLength(1));
+    });
+
+    test('a valid config still opens exactly one socket', () async {
+      final fakeLog = Log.fake();
+      final uris = <Uri>[];
+      final driver = ReverbBroadcastDriver(
+        _defaultConfig(),
+        channelFactory: (uri) {
+          uris.add(uri);
+          final socket = _MockWebSocketChannel();
+          _simulateConnectionEstablished(socket);
+          return socket;
+        },
+        random: Random(42),
+      );
+
+      await driver.connect();
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+
+      expect(uris, hasLength(1));
+      expect(
+        uris.single.toString(),
+        'ws://localhost:8080/app/test-app-key'
+        '?protocol=7&client=dart&version=1.0.0',
+      );
+      expect(driver.isConnected, isTrue);
+      expect(errorsOf(fakeLog), isEmpty);
+
+      await driver.disconnect();
+    });
+
+    test('a synchronous throw from the channel factory takes the retry '
+        'path', () async {
+      var calls = 0;
+      final driver = ReverbBroadcastDriver(
+        _defaultConfig(overrides: {'reconnect': true}),
+        channelFactory: (_) {
+          calls++;
+          if (calls == 1) throw StateError('the socket could not be created');
+          final socket = _MockWebSocketChannel();
+          _simulateConnectionEstablished(socket);
+          return socket;
+        },
+        random: Random(42),
+      );
+
+      await expectLater(driver.connect(), throwsStateError);
+      expect(calls, 1);
+
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+
+      expect(calls, greaterThanOrEqualTo(2));
+      expect(driver.isConnected, isTrue);
+
+      await driver.disconnect();
+    });
+  });
 }
 
 /// Reads an int id off every received event, as app code might, and so
