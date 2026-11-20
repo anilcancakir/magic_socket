@@ -11,10 +11,6 @@ topics:
   - broadcasting
   - magic
 
-screenshots:
-  - description: "The Magic Socket logo."
-    path: screenshots/logo.png
-
 environment:
   sdk: ">=3.13.0 <4.0.0"
   flutter: ">=3.47.0"
