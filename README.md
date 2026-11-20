@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/anilcancakir/magic_socket/master/.github/magic-logo.svg" width="120" alt="Magic Logo" />
+  <img src="https://raw.githubusercontent.com/anilcancakir/magic_socket/master/screenshots/logo.png" width="120" alt="Magic Socket logo" />
 </p>
 
 <h1 align="center">Magic Socket</h1>
